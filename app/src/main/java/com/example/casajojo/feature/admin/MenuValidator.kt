@@ -18,7 +18,7 @@ fun validarMenu(
     precio: String
 ): MenuFormErrors {
 
-    val precioNumero = precio.toIntOrNull()
+    val precioNumero = precio.trim().toIntOrNull()
 
     return MenuFormErrors(
         nombre = if (nombre.isBlank()) {
