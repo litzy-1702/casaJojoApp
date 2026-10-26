@@ -3,26 +3,33 @@ package com.example.casajojo.feature.admin
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import com.example.casajojo.data.model.MenuItem
+import java.text.NumberFormat
+import java.util.Locale
 
 @Composable
 fun AdminScreen(
@@ -33,22 +40,46 @@ fun AdminScreen(
     val menu by viewModel.menuItems.collectAsState()
     val mensaje by viewModel.mensaje.collectAsState()
 
+    var platoAEliminar by remember {
+        mutableStateOf<MenuItem?>(null)
+    }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Text(
-            text = "Administración del menú",
-            style = MaterialTheme.typography.headlineMedium
-        )
+        // Encabezado de administración
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "LA CASA JO-JO",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
 
-        Text(
-            text = "Gestiona los platos disponibles para hoy.",
-            style = MaterialTheme.typography.bodyLarge
-        )
+                Text(
+                    text = "Administración del menú",
+                    style = MaterialTheme.typography.headlineSmall
+                )
 
+                Text(
+                    text = "Gestiona los platos y su disponibilidad.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+
+        // Acceso al formulario
         Button(
             onClick = {
                 viewModel.nuevoPlato()
@@ -59,13 +90,14 @@ fun AdminScreen(
             Text("Agregar plato")
         }
 
+        // Mensajes del ViewModel
         mensaje?.let { texto ->
             Card(
+                modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
                     containerColor =
                         MaterialTheme.colorScheme.secondaryContainer
-                ),
-                modifier = Modifier.fillMaxWidth()
+                )
             ) {
                 Row(
                     modifier = Modifier.padding(12.dp),
@@ -73,7 +105,8 @@ fun AdminScreen(
                 ) {
                     Text(
                         text = texto,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium
                     )
 
                     TextButton(
@@ -85,87 +118,182 @@ fun AdminScreen(
             }
         }
 
-        if (menu.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxWidth(),
-                contentAlignment = Alignment.Center
-            ) {
-                Text("Todavía no hay platos registrados para hoy.")
-            }
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
-                items(
-                    items = menu,
-                    key = { it.id }
-                ) { item ->
+        // Resumen de productos
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Platos del menú",
+                style = MaterialTheme.typography.titleMedium
+            )
 
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Text(
+                    text = "${menu.size} registrados",
+                    modifier = Modifier.padding(
+                        horizontal = 12.dp,
+                        vertical = 6.dp
+                    ),
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+        }
+
+        // Lista agrupada por precio
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (menu.isEmpty()) {
+                item {
                     Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .animateContentSize()
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         Column(
-                            modifier = Modifier.padding(16.dp),
-                            verticalArrangement =
-                                Arrangement.spacedBy(6.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
-                                text = item.nombre,
-                                style =
-                                    MaterialTheme.typography.titleLarge
+                                text = "Todavía no hay platos",
+                                style = MaterialTheme.typography.titleMedium
                             )
-
-                            Text(item.descripcion)
-
-                            Text("Precio: $${item.precio}")
 
                             Text(
-                                if (item.disponible) {
-                                    "Disponible para pedidos"
-                                } else {
-                                    "Agotado"
-                                }
+                                text = "Agrega un plato para comenzar " +
+                                        "a organizar el menú.",
+                                style = MaterialTheme.typography.bodyMedium
                             )
+                        }
+                    }
+                }
+            } else {
+                val grupos = menu.groupBy { it.precio }.toSortedMap()
 
-                            Row(
-                                horizontalArrangement =
+                grupos.forEach { (precio, platos) ->
+                    item(key = "precio-$precio") {
+                        Text(
+                            text = "PLATOS DE ${formatearPrecio(precio)}",
+                            modifier = Modifier.padding(
+                                top = 8.dp,
+                                bottom = 2.dp
+                            ),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    items(
+                        items = platos,
+                        key = { plato ->
+                            "plato-${plato.id}-${plato.nombre}"
+                        }
+                    ) { plato ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateContentSize(),
+                            elevation = CardDefaults.cardElevation(
+                                defaultElevation = 2.dp
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement =
                                     Arrangement.spacedBy(8.dp)
                             ) {
-                                TextButton(
-                                    onClick = {
-                                        viewModel.cargarPlato(item)
-                                        onEditarClick(item)
-                                    }
-                                ) {
-                                    Text("Editar")
+                                Text(
+                                    text = plato.nombre,
+                                    style = MaterialTheme.typography.titleLarge
+                                )
+
+                                if (plato.descripcion.isNotBlank()) {
+                                    Text(
+                                        text = plato.descripcion,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
                                 }
 
-                                TextButton(
-                                    onClick = {
-                                        viewModel.cambiarDisponibilidad(item)
+                                Text(
+                                    text = formatearPrecio(plato.precio),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                                Surface(
+                                    shape = MaterialTheme.shapes.small,
+                                    color = if (plato.disponible) {
+                                        MaterialTheme.colorScheme
+                                            .secondaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme
+                                            .errorContainer
                                     }
                                 ) {
                                     Text(
-                                        if (item.disponible) {
-                                            "Agotar"
+                                        text = if (plato.disponible) {
+                                            "Disponible para pedidos"
                                         } else {
-                                            "Activar"
-                                        }
+                                            "Agotado"
+                                        },
+                                        modifier = Modifier.padding(
+                                            horizontal = 10.dp,
+                                            vertical = 5.dp
+                                        ),
+                                        style = MaterialTheme.typography.labelMedium
                                     )
                                 }
-                            }
 
-                            TextButton(
-                                onClick = {
-                                    viewModel.eliminarPlato(item)
+                                Row(
+                                    horizontalArrangement =
+                                        Arrangement.spacedBy(8.dp)
+                                ) {
+                                    TextButton(
+                                        onClick = {
+                                            viewModel.cargarPlato(plato)
+                                            onEditarClick(plato)
+                                        }
+                                    ) {
+                                        Text("Editar")
+                                    }
+
+                                    TextButton(
+                                        onClick = {
+                                            viewModel.cambiarDisponibilidad(
+                                                plato
+                                            )
+                                        }
+                                    ) {
+                                        Text(
+                                            if (plato.disponible) {
+                                                "Agotar"
+                                            } else {
+                                                "Activar"
+                                            }
+                                        )
+                                    }
                                 }
-                            ) {
-                                Text("Eliminar plato")
+
+                                TextButton(
+                                    onClick = {
+                                        platoAEliminar = plato
+                                    }
+                                ) {
+                                    Text(
+                                        text = "Eliminar plato",
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
                             }
                         }
                     }
@@ -173,4 +301,48 @@ fun AdminScreen(
             }
         }
     }
+
+    // Confirmación antes de eliminar
+    platoAEliminar?.let { plato ->
+        AlertDialog(
+            onDismissRequest = {
+                platoAEliminar = null
+            },
+            title = {
+                Text("Eliminar plato")
+            },
+            text = {
+                Text(
+                    "¿Seguro que deseas eliminar " +
+                            "\"${plato.nombre}\" del menú?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.eliminarPlato(plato)
+                        platoAEliminar = null
+                    }
+                ) {
+                    Text("Eliminar")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        platoAEliminar = null
+                    }
+                ) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+}
+
+private fun formatearPrecio(precio: Int): String {
+    val formato = NumberFormat.getIntegerInstance(
+        Locale("es", "CL")
+    )
+    return "\$" + formato.format(precio)
 }
