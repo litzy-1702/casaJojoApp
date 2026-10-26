@@ -1,40 +1,70 @@
 package com.example.casajojo
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Text
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.tooling.preview.Preview
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModelProvider
+import com.example.casajojo.core.notifications.OrderNotificationManager
+import com.example.casajojo.data.local.AppDatabase
+import com.example.casajojo.data.repository.MenuRepository
+import com.example.casajojo.feature.admin.AdminViewModel
+import com.example.casajojo.feature.admin.AdminViewModelFactory
+import com.example.casajojo.feature.operations.OperationsViewModel
+import com.example.casajojo.feature.operations.OperationsViewModelFactory
+import com.example.casajojo.navigation.AppNavigation
 import com.example.casajojo.ui.theme.CasaJojoTheme
 
+
 class MainActivity : ComponentActivity() {
+
+    private val requestNotificationPermissionLauncher =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { _ -> }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-        setContent {
 
+        // Pedir permiso de notificaciones para Android 13+ (API 33+)
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestNotificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
+            }
         }
-    }
-}
 
-@Composable
-fun Greeting(name: String, modifier: Modifier = Modifier) {
-    Text(
-        text = "Hello $name!",
-        modifier = modifier
-    )
-}
+        // Inicializar Room DB
+        val database = AppDatabase.getInstance(applicationContext)
 
-@Preview(showBackground = true)
-@Composable
-fun GreetingPreview() {
-    CasaJojoTheme {
-        Greeting("Android")
+        // Inicializar Gestor de Notificaciones
+        val notificationManager = OrderNotificationManager(applicationContext)
+
+        // Repositorios y ViewModels
+        val menuRepository = MenuRepository(database.menuDao())
+
+        val adminViewModel = ViewModelProvider(
+            this,
+            AdminViewModelFactory(menuRepository)
+        )[AdminViewModel::class.java]
+
+        val operationsViewModel = ViewModelProvider(
+            this,
+            OperationsViewModelFactory(database.pedidoDao(), notificationManager)
+        )[OperationsViewModel::class.java]
+
+        setContent {
+            CasaJojoTheme {
+                AppNavigation(
+                    adminViewModel = adminViewModel,
+                    operationsViewModel = operationsViewModel
+                )
+            }
+        }
     }
 }
