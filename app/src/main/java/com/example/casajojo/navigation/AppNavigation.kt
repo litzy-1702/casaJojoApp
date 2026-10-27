@@ -8,18 +8,25 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
-import com.example.casajojo.data.repository.MenuRepository
 import com.example.casajojo.feature.admin.AdminScreen
 import com.example.casajojo.feature.admin.AdminViewModel
 import com.example.casajojo.feature.admin.MenuFormScreen
 import com.example.casajojo.feature.caja.CajaScreen
+import com.example.casajojo.feature.client.CarritoScreen
+import com.example.casajojo.feature.client.CheckoutScreen
+import com.example.casajojo.feature.client.ClienteViewModel
+import com.example.casajojo.feature.client.EstadoPedidoScreen
+import com.example.casajojo.feature.client.MenuClienteScreen
 import com.example.casajojo.feature.cocina.CocinaScreen
 import com.example.casajojo.feature.operations.OperationsViewModel
 
 sealed class Screen(val route: String, val title: String) {
     object Admin : Screen("admin", "Admin")
     object MenuForm : Screen("menu_form", "Formulario")
-    object Cliente : Screen("cliente", "Cliente")
+    object ClienteMenu : Screen("cliente_menu", "Cliente")
+    object ClienteCarrito : Screen("cliente_carrito", "Carrito")
+    object ClienteCheckout : Screen("cliente_checkout", "Checkout")
+    object ClienteEstado : Screen("cliente_estado", "Estado Pedido")
     object Caja : Screen("caja", "Caja")
     object Cocina : Screen("cocina", "Cocina")
 }
@@ -28,7 +35,8 @@ sealed class Screen(val route: String, val title: String) {
 @Composable
 fun AppNavigation(
     adminViewModel: AdminViewModel,
-    operationsViewModel: OperationsViewModel
+    operationsViewModel: OperationsViewModel,
+    clienteViewModel: ClienteViewModel
 ) {
     val navController = rememberNavController()
     val navBackStackEntry by navController.currentBackStackEntryAsState()
@@ -37,9 +45,15 @@ fun AppNavigation(
     Scaffold(
         bottomBar = {
             NavigationBar {
-                listOf(Screen.Admin, Screen.Cliente, Screen.Caja, Screen.Cocina).forEach { screen ->
+                listOf(
+                    Screen.Admin,
+                    Screen.ClienteMenu,
+                    Screen.Caja,
+                    Screen.Cocina
+                ).forEach { screen ->
                     NavigationBarItem(
-                        selected = currentRoute == screen.route,
+                        selected = currentRoute?.startsWith("cliente") == true && screen == Screen.ClienteMenu
+                                || currentRoute == screen.route,
                         onClick = {
                             if (currentRoute != screen.route) {
                                 navController.navigate(screen.route) {
@@ -59,7 +73,7 @@ fun AppNavigation(
         NavHost(
             navController = navController,
             startDestination = Screen.Caja.route,
-            modifier = Modifier.padding(innerPadding)
+            modifier = Modifier.padding(innerPadding) // Corrección del parámetro de padding
         ) {
             composable(Screen.Admin.route) {
                 AdminScreen(
@@ -76,13 +90,47 @@ fun AppNavigation(
                 )
             }
 
-            composable(Screen.Cliente.route) {
-                // pantalla momentanea para la vista de cliente
-                Surface(modifier = Modifier.padding(paddingValues = innerPadding)) {
-                    Text("Vista Cliente: Próximamente integración del Integrante 2")
-                }
+            // --- RUTAS DEL MÓDULO CLIENTE ---
+            composable(Screen.ClienteMenu.route) {
+                MenuClienteScreen(
+                    viewModel = clienteViewModel,
+                    onIrAlCarrito = { navController.navigate(Screen.ClienteCarrito.route) },
+                    onVerMisPedidos = { navController.navigate(Screen.ClienteEstado.route) }
+                )
             }
 
+            composable(Screen.ClienteCarrito.route) {
+                CarritoScreen(
+                    viewModel = clienteViewModel,
+                    onSeguirEligiendo = { navController.popBackStack() },
+                    onContinuar = { navController.navigate(Screen.ClienteCheckout.route) }
+                )
+            }
+
+            composable(Screen.ClienteCheckout.route) {
+                CheckoutScreen(
+                    viewModel = clienteViewModel,
+                    onVolverAlCarrito = { navController.popBackStack() },
+                    onPedidoConfirmado = {
+                        navController.navigate(Screen.ClienteEstado.route) {
+                            popUpTo(Screen.ClienteMenu.route)
+                        }
+                    }
+                )
+            }
+
+            composable(Screen.ClienteEstado.route) {
+                EstadoPedidoScreen(
+                    viewModel = clienteViewModel,
+                    onVolverAlMenu = {
+                        navController.navigate(Screen.ClienteMenu.route) {
+                            popUpTo(Screen.ClienteMenu.route) { inclusive = true }
+                        }
+                    }
+                )
+            }
+
+            // --- RUTAS DE OPERACIONES ---
             composable(Screen.Caja.route) {
                 CajaScreen(viewModel = operationsViewModel)
             }

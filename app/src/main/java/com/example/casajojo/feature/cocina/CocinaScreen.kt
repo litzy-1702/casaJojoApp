@@ -68,7 +68,7 @@ fun ComandaCocinaCard(
     pedido: Pedido,
     viewModel: OperationsViewModel
 ) {
-    val atrasado = viewModel.estaAtrasado(pedido.horaComprometida, pedido.estado)
+    val atrasado = viewModel.estaAtrasado(pedido)
 
     Card(
         modifier = Modifier
