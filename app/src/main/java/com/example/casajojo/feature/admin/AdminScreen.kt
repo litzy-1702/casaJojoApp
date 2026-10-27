@@ -35,7 +35,8 @@ import java.util.Locale
 fun AdminScreen(
     viewModel: AdminViewModel,
     onAgregarClick: () -> Unit,
-    onEditarClick: (MenuItem) -> Unit
+    onEditarClick: (MenuItem) -> Unit,
+    onGestionUsuariosClick: () -> Unit
 ) {
     val menu by viewModel.menuItems.collectAsState()
     val mensaje by viewModel.mensaje.collectAsState()
@@ -79,7 +80,8 @@ fun AdminScreen(
             }
         }
 
-        // Acceso al formulario
+
+        // Acceso al formulario para agregar platos
         Button(
             onClick = {
                 viewModel.nuevoPlato()
@@ -89,6 +91,15 @@ fun AdminScreen(
         ) {
             Text("Agregar plato")
         }
+
+        // Acceso a la gestión de usuarios
+        Button(
+            onClick = onGestionUsuariosClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Gestionar usuarios")
+        }
+
 
         // Mensajes del ViewModel
         mensaje?.let { texto ->
