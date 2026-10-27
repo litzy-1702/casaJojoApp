@@ -1,6 +1,8 @@
 
 package com.example.casajojo.feature.admin
 
+
+import com.example.casajojo.feature.admin.AdminDashboardScreen
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -38,7 +40,8 @@ fun AdminDashboardScreen(
     adminViewModel: AdminViewModel,
     operationsViewModel: OperationsViewModel,
     onGestionarMenu: () -> Unit,
-    onGestionarUsuarios: () -> Unit
+    onGestionarUsuarios: () -> Unit,
+    onGestionarPedidos: () -> Unit
 ) {
     val pedidos by operationsViewModel.pedidos.collectAsState()
     val menu by adminViewModel.menuItems.collectAsState()
@@ -262,6 +265,15 @@ fun AdminDashboardScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text("Administrar menú")
+            }
+        }
+
+        item {
+            OutlinedButton(
+                onClick = onGestionarPedidos,
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text("Gestionar pedidos")
             }
         }
 

@@ -11,9 +11,13 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+
+import com.example.casajojo.feature.admin.AdminDashboardScreen
+import com.example.casajojo.feature.admin.AdminPedidosScreen
 import com.example.casajojo.feature.admin.AdminScreen
 import com.example.casajojo.feature.admin.AdminViewModel
 import com.example.casajojo.feature.admin.MenuFormScreen
+
 import com.example.casajojo.feature.auth.AuthViewModel
 import com.example.casajojo.feature.auth.CambiarPasswordScreen
 import com.example.casajojo.feature.auth.ClienteDatosScreen
@@ -22,6 +26,7 @@ import com.example.casajojo.feature.auth.LoginScreen
 import com.example.casajojo.feature.auth.RolUsuario
 import com.example.casajojo.feature.auth.UsuariosScreen
 import com.example.casajojo.feature.auth.UsuariosViewModel
+
 import com.example.casajojo.feature.caja.CajaScreen
 import com.example.casajojo.feature.client.CarritoScreen
 import com.example.casajojo.feature.client.CheckoutScreen
@@ -31,11 +36,16 @@ import com.example.casajojo.feature.client.MenuClienteScreen
 import com.example.casajojo.feature.cocina.CocinaScreen
 import com.example.casajojo.feature.operations.OperationsViewModel
 
+
 sealed class Screen(val route: String, val title: String) {
+
     object Inicio : Screen("inicio", "CasaJojo")
     object Login : Screen("login", "Iniciar sesión")
     object CambiarPassword : Screen("cambiar_password", "Seguridad")
     object ClienteDatos : Screen("cliente_datos", "Datos del cliente")
+
+    object Dashboard : Screen("dashboard", "Panel principal")
+    object AdminPedidos : Screen("admin_pedidos", "Gestión de pedidos")
 
     object Admin : Screen("admin", "Administración")
     object MenuForm : Screen("menu_form", "Formulario")
@@ -50,14 +60,16 @@ sealed class Screen(val route: String, val title: String) {
     object Cocina : Screen("cocina", "Cocina")
 }
 
+
 private fun rutaParaRol(rol: String): String {
     return when (rol) {
-        "ADMIN" -> Screen.Admin.route
+        "ADMIN" -> Screen.Dashboard.route
         "CAJERA" -> Screen.Caja.route
         "COCINA" -> Screen.Cocina.route
         else -> Screen.Inicio.route
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,6 +113,8 @@ fun AppNavigation(
     )
 
     val rutasInternas = setOf(
+        Screen.Dashboard.route,
+        Screen.AdminPedidos.route,
         Screen.Admin.route,
         Screen.MenuForm.route,
         Screen.Usuarios.route,
@@ -182,6 +196,8 @@ fun AppNavigation(
         clienteTelefono
     ) {
         val rolRequerido = when (currentRoute) {
+            Screen.Dashboard.route,
+            Screen.AdminPedidos.route,
             Screen.Admin.route,
             Screen.MenuForm.route,
             Screen.Usuarios.route -> "ADMIN"
@@ -249,7 +265,7 @@ fun AppNavigation(
         }
     }
 
-    // Evitar volver a pantallas internas mediante el botón Atrás
+    // Evitar volver a pantallas internas mediante Atrás
     // mientras exista una sesión interna activa.
     BackHandler(
         enabled = authState.usuarioActual != null &&
@@ -272,7 +288,32 @@ fun AppNavigation(
                         )
                     },
                     actions = {
-                        TextButton(onClick = salir) {
+                        // NUEVO: volver al dashboard desde las
+                        // pantallas administrativas.
+                        if (
+                            authState.usuarioActual?.rol == "ADMIN" &&
+                            currentRoute != Screen.Dashboard.route
+                        ) {
+                            TextButton(
+                                onClick = {
+                                    navController.navigate(
+                                        Screen.Dashboard.route
+                                    ) {
+                                        popUpTo(Screen.Inicio.route) {
+                                            inclusive = false
+                                        }
+                                        launchSingleTop = true
+                                    }
+                                }
+                            ) {
+                                Text("Panel principal")
+                            }
+                        }
+
+                        // Cerrar sesión continúa disponible para todos.
+                        TextButton(
+                            onClick = salir
+                        ) {
                             Text("Cerrar sesión")
                         }
                     }
@@ -283,7 +324,9 @@ fun AppNavigation(
                         Text("CasaJojo · $clienteNombre")
                     },
                     actions = {
-                        TextButton(onClick = salir) {
+                        TextButton(
+                            onClick = salir
+                        ) {
                             Text("Salir")
                         }
                     }
@@ -298,7 +341,7 @@ fun AppNavigation(
             modifier = Modifier.padding(innerPadding)
         ) {
 
-            // Pantalla inicial
+            // Pantalla inicial.
             composable(Screen.Inicio.route) {
                 InicioScreen(
                     onCliente = {
@@ -316,7 +359,7 @@ fun AppNavigation(
                 )
             }
 
-            // Inicio de sesión de los usuarios internos
+            // Inicio de sesión de los usuarios internos.
             composable(Screen.Login.route) {
                 LoginScreen(
                     rol = rolSeleccionado,
@@ -336,7 +379,7 @@ fun AppNavigation(
                 )
             }
 
-            // Cambio obligatorio de contraseña
+            // Cambio obligatorio de contraseña.
             composable(Screen.CambiarPassword.route) {
                 val usuario = authState.usuarioActual
 
@@ -356,7 +399,7 @@ fun AppNavigation(
                 }
             }
 
-            // Identificación básica del cliente
+            // Identificación básica del cliente.
             composable(Screen.ClienteDatos.route) {
                 ClienteDatosScreen(
                     onContinuar = { nombre, telefono ->
@@ -380,7 +423,37 @@ fun AppNavigation(
                 )
             }
 
-            // Administración del menú
+            // Dashboard administrativo.
+            composable(Screen.Dashboard.route) {
+                AdminDashboardScreen(
+                    adminViewModel = adminViewModel,
+                    operationsViewModel = operationsViewModel,
+                    onGestionarMenu = {
+                        navController.navigate(
+                            Screen.Admin.route
+                        )
+                    },
+                    onGestionarUsuarios = {
+                        navController.navigate(
+                            Screen.Usuarios.route
+                        )
+                    },
+                    onGestionarPedidos = {
+                        navController.navigate(
+                            Screen.AdminPedidos.route
+                        )
+                    }
+                )
+            }
+
+            // Gestión administrativa de pedidos.
+            composable(Screen.AdminPedidos.route) {
+                AdminPedidosScreen(
+                    operationsViewModel = operationsViewModel
+                )
+            }
+
+            // Administración del menú.
             composable(Screen.Admin.route) {
                 AdminScreen(
                     viewModel = adminViewModel,
@@ -402,7 +475,7 @@ fun AppNavigation(
                 )
             }
 
-            // Formulario para agregar o editar productos del menú
+            // Formulario para agregar o editar productos.
             composable(Screen.MenuForm.route) {
                 MenuFormScreen(
                     viewModel = adminViewModel,
@@ -412,7 +485,7 @@ fun AppNavigation(
                 )
             }
 
-            // Gestión de usuarios internos
+            // Gestión de usuarios internos.
             composable(Screen.Usuarios.route) {
                 UsuariosScreen(
                     viewModel = usuariosViewModel,
@@ -422,7 +495,7 @@ fun AppNavigation(
                 )
             }
 
-            // Menú del cliente
+            // Menú del cliente.
             composable(Screen.ClienteMenu.route) {
                 MenuClienteScreen(
                     viewModel = clienteViewModel,
@@ -439,7 +512,7 @@ fun AppNavigation(
                 )
             }
 
-            // Carrito del cliente
+            // Carrito del cliente.
             composable(Screen.ClienteCarrito.route) {
                 CarritoScreen(
                     viewModel = clienteViewModel,
@@ -454,7 +527,7 @@ fun AppNavigation(
                 )
             }
 
-            // Confirmación del pedido
+            // Confirmación del pedido.
             composable(Screen.ClienteCheckout.route) {
                 CheckoutScreen(
                     viewModel = clienteViewModel,
@@ -471,7 +544,7 @@ fun AppNavigation(
                 )
             }
 
-            // Estado e historial de pedidos del cliente
+            // Estado e historial de pedidos del cliente.
             composable(Screen.ClienteEstado.route) {
                 EstadoPedidoScreen(
                     viewModel = clienteViewModel,
@@ -487,14 +560,14 @@ fun AppNavigation(
                 )
             }
 
-            // Módulo de caja
+            // Módulo de caja.
             composable(Screen.Caja.route) {
                 CajaScreen(
                     viewModel = operationsViewModel
                 )
             }
 
-            // Módulo de cocina
+            // Módulo de cocina.
             composable(Screen.Cocina.route) {
                 CocinaScreen(
                     viewModel = operationsViewModel
