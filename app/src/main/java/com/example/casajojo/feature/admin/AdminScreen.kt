@@ -36,8 +36,7 @@ fun AdminScreen(
     viewModel: AdminViewModel,
     onAgregarClick: () -> Unit,
     onEditarClick: (MenuItem) -> Unit,
-    onGestionUsuariosClick: () -> Unit,
-    onVolverDashboard: () -> Unit
+    onGestionUsuariosClick: () -> Unit
 ) {
     val menu by viewModel.menuItems.collectAsState()
     val mensaje by viewModel.mensaje.collectAsState()
