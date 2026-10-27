@@ -3,6 +3,7 @@ package com.example.casajojo.feature.admin
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.casajojo.data.model.MenuCasaJojo
 import com.example.casajojo.data.model.MenuItem
 import com.example.casajojo.data.repository.MenuRepository
 import java.time.LocalDate
@@ -32,6 +33,8 @@ class AdminViewModel(
 ) : ViewModel() {
 
     private val fechaHoy = LocalDate.now().toString()
+
+    private var cargandoMenuBase = false
 
     val menuItems: StateFlow<List<MenuItem>> =
         repository.observarMenuDelDia(fechaHoy).stateIn(
@@ -156,7 +159,8 @@ class AdminViewModel(
                 throw e
             } catch (e: Exception) {
                 _mensaje.value =
-                    "No se pudo guardar el plato. Intenta nuevamente."
+                    "No se pudo guardar el plato. " +
+                            "Intenta nuevamente."
             }
         }
 
@@ -164,73 +168,26 @@ class AdminViewModel(
     }
 
     /**
-     * Carga los seis platos base del restaurante para hoy.
+     * Carga los platos base que faltan para hoy.
      *
-     * Si un plato ya existe con el mismo nombre,
-     * conserva el registro existente y no lo duplica.
+     * Evita iniciar dos cargas simultáneas desde esta instancia
+     * del ViewModel y conserva los registros existentes.
      */
     fun cargarMenuBase() {
+        if (cargandoMenuBase) return
+
+        cargandoMenuBase = true
+
         viewModelScope.launch {
             try {
                 val platosExistentes =
                     repository.observarMenuDelDia(fechaHoy).first()
 
-                val nombresExistentes = platosExistentes
-                    .map { normalizarNombre(it.nombre) }
-                    .toSet()
-
-                val descripcionBase =
-                    "Incluye mix de ensaladas. " +
-                            "Selecciona uno o dos agregados."
-
-                val platosBase = listOf(
-                    MenuItem(
-                        nombre = "Guatitas a la jardinera",
-                        descripcion = descripcionBase,
-                        precio = 4600,
-                        disponible = true,
-                        fechaMenu = fechaHoy
-                    ),
-                    MenuItem(
-                        nombre = "Cerdo mongoliano",
-                        descripcion = descripcionBase,
-                        precio = 4600,
-                        disponible = true,
-                        fechaMenu = fechaHoy
-                    ),
-                    MenuItem(
-                        nombre = "Filete de pollo",
-                        descripcion = descripcionBase,
-                        precio = 4600,
-                        disponible = true,
-                        fechaMenu = fechaHoy
-                    ),
-                    MenuItem(
-                        nombre = "Tortilla de porotos verdes",
-                        descripcion = descripcionBase,
-                        precio = 4600,
-                        disponible = true,
-                        fechaMenu = fechaHoy
-                    ),
-                    MenuItem(
-                        nombre = "Pollo asado",
-                        descripcion = descripcionBase,
-                        precio = 4800,
-                        disponible = true,
-                        fechaMenu = fechaHoy
-                    ),
-                    MenuItem(
-                        nombre = "Carne al jugo",
-                        descripcion = descripcionBase,
-                        precio = 4800,
-                        disponible = true,
+                val platosFaltantes =
+                    MenuCasaJojo.platosFaltantes(
+                        platosExistentes = platosExistentes,
                         fechaMenu = fechaHoy
                     )
-                )
-
-                val platosFaltantes = platosBase.filter { plato ->
-                    normalizarNombre(plato.nombre) !in nombresExistentes
-                }
 
                 if (platosFaltantes.isEmpty()) {
                     _mensaje.value =
@@ -241,7 +198,10 @@ class AdminViewModel(
                     }
 
                     _mensaje.value =
-                        if (platosFaltantes.size == platosBase.size) {
+                        if (
+                            platosFaltantes.size ==
+                            MenuCasaJojo.platosBase(fechaHoy).size
+                        ) {
                             "Se cargaron los seis platos del menú de hoy."
                         } else {
                             "Se agregaron ${platosFaltantes.size} " +
@@ -253,13 +213,13 @@ class AdminViewModel(
                 throw e
             } catch (e: Exception) {
                 _mensaje.value =
-                    "No se pudo cargar el menú base. Intenta nuevamente."
+                    "No se pudo cargar el menú base. " +
+                            "Intenta nuevamente."
+            } finally {
+                cargandoMenuBase = false
             }
         }
     }
-
-    private fun normalizarNombre(nombre: String): String =
-        nombre.trim().lowercase()
 
     fun cambiarDisponibilidad(item: MenuItem) {
         viewModelScope.launch {
@@ -269,8 +229,7 @@ class AdminViewModel(
                     disponible = !item.disponible
                 )
 
-                _mensaje.value =
-                    "Disponibilidad actualizada."
+                _mensaje.value = "Disponibilidad actualizada."
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -285,8 +244,7 @@ class AdminViewModel(
             try {
                 repository.eliminar(item)
 
-                _mensaje.value =
-                    "Plato eliminado del menú."
+                _mensaje.value = "Plato eliminado del menú."
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
