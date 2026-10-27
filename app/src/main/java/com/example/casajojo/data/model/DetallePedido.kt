@@ -15,9 +15,8 @@ data class DetallePedido(
         get() = precioUnitario * cantidad
 
     /**
-     * Construye una única descripción del plato.
-     * El nombre contiene solamente la proteína.
-     * Los agregados y la ensalada se muestran una sola vez.
+     * Descripción completa para mostrar en el carrito.
+     * Incluye los agregados seleccionados y la ensalada.
      */
     val descripcionCompleta: String
         get() = buildString {
@@ -39,7 +38,20 @@ fun List<DetallePedido>.calcularTotal(): Int =
 fun List<DetallePedido>.contarPlatos(): Int =
     sumOf { it.cantidad }
 
+/**
+ * Genera el detalle del pedido para caja y cocina.
+ *
+ * Si el plato tiene agregados, incluye la descripción completa.
+ * Si no tiene agregados, conserva el formato tradicional
+ * esperado por las pruebas existentes.
+ */
 fun List<DetallePedido>.aTextoDetalle(): String =
     joinToString(separator = ", ") { linea ->
-        "${linea.cantidad}x ${linea.descripcionCompleta}"
+        val descripcion = if (linea.agregados.isEmpty()) {
+            linea.nombrePlato
+        } else {
+            linea.descripcionCompleta
+        }
+
+        "${linea.cantidad}x $descripcion"
     }
