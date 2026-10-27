@@ -12,12 +12,14 @@ import androidx.lifecycle.ViewModelProvider
 import com.example.casajojo.core.notifications.OrderNotificationManager
 import com.example.casajojo.data.local.AppDatabase
 import com.example.casajojo.data.repository.MenuRepository
+import com.example.casajojo.data.repository.PedidoRepository
 import com.example.casajojo.feature.admin.AdminViewModel
 import com.example.casajojo.feature.admin.AdminViewModelFactory
 import com.example.casajojo.feature.operations.OperationsViewModel
 import com.example.casajojo.feature.operations.OperationsViewModelFactory
 import com.example.casajojo.navigation.AppNavigation
 import com.example.casajojo.ui.theme.CasaJojoTheme
+
 
 
 class MainActivity : ComponentActivity() {
@@ -28,7 +30,6 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
-        // Pedir permiso de notificaciones para Android 13+ (API 33+)
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             if (ContextCompat.checkSelfPermission(
                     this,
@@ -39,14 +40,11 @@ class MainActivity : ComponentActivity() {
             }
         }
 
-        // Inicializar Room DB
         val database = AppDatabase.getInstance(applicationContext)
-
-        // Inicializar Gestor de Notificaciones
         val notificationManager = OrderNotificationManager(applicationContext)
 
-        // Repositorios y ViewModels
         val menuRepository = MenuRepository(database.menuDao())
+        val pedidoRepository = PedidoRepository(database.pedidoDao())
 
         val adminViewModel = ViewModelProvider(
             this,
@@ -58,11 +56,18 @@ class MainActivity : ComponentActivity() {
             OperationsViewModelFactory(database.pedidoDao(), notificationManager)
         )[OperationsViewModel::class.java]
 
+        // INSTANCIAR ViewModel DEL CLIENTE
+        val clienteViewModel = ViewModelProvider(
+            this,
+            com.example.casajojo.feature.client.ClienteViewModelFactory(menuRepository, pedidoRepository)
+        )[com.example.casajojo.feature.client.ClienteViewModel::class.java]
+
         setContent {
             CasaJojoTheme {
                 AppNavigation(
                     adminViewModel = adminViewModel,
-                    operationsViewModel = operationsViewModel
+                    operationsViewModel = operationsViewModel,
+                    clienteViewModel = clienteViewModel
                 )
             }
         }

@@ -64,13 +64,21 @@ class OperationsViewModel(
 
 
     //calcula si el pedido esta atrasado comparando la hora actual con la hora solicitada
-    fun estaAtrasado(horaComprometida: String, estado: EstadoPedido): Boolean {
-        if (estado == EstadoPedido.ENTREGADO || estado == EstadoPedido.CANCELADO) return false
+    fun estaAtrasado(pedido: Pedido): Boolean {
+        if (pedido.estado == EstadoPedido.ENTREGADO || pedido.estado == EstadoPedido.CANCELADO) return false
+
+        // si es lo antes posible, ver si han pasado más de 20 minutos desde su creacion
+        if (pedido.horaComprometida == "Lo antes posible") {
+            val tiempoLimiteMs = 20 * 60 * 1000 // 20 minutos
+            return (System.currentTimeMillis() - pedido.horaCreacion) > tiempoLimiteMs
+        }
+
+        // Para horas específicas (ejemplo 14:30)
         return try {
             val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
             val horaActualStr = sdf.format(Date())
             val ahora = sdf.parse(horaActualStr)
-            val comprometida = sdf.parse(horaComprometida)
+            val comprometida = sdf.parse(pedido.horaComprometida)
 
             if (ahora != null && comprometida != null) {
                 ahora.after(comprometida)
