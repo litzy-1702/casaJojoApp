@@ -1,0 +1,3204 @@
+﻿package com.example.casajojo
+
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
+import android.os.Bundle
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
+import androidx.lifecycle.ViewModelProvider
+import com.example.casajojo.core.notifications.OrderNotificationManager
+import com.example.casajojo.data.local.AppDatabase
+import com.example.casajojo.data.repository.MenuRepository
+import com.example.casajojo.data.repository.PedidoRepository
+import com.example.casajojo.feature.admin.AdminViewModel
+import com.example.casajojo.feature.admin.AdminViewModelFactory
+import com.example.casajojo.feature.auth.AuthRepository
+import com.example.casajojo.feature.auth.AuthViewModel
+import com.example.casajojo.feature.auth.AuthViewModelFactory
+import com.example.casajojo.feature.auth.UsuariosViewModel
+import com.example.casajojo.feature.auth.UsuariosViewModelFactory
+import com.example.casajojo.feature.client.ClienteViewModel
+import com.example.casajojo.feature.client.ClienteViewModelFactory
+import com.example.casajojo.feature.operations.OperationsViewModel
+import com.example.casajojo.feature.operations.OperationsViewModelFactory
+import com.example.casajojo.navigation.AppNavigation
+import com.example.casajojo.ui.theme.CasaJojoTheme
+
+class MainActivity : ComponentActivity() {
+
+    private val requestNotificationPermissionLauncher =
+        registerForActivityResult(
+            ActivityResultContracts.RequestPermission()
+        ) { _ -> }
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            if (
+                ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                requestNotificationPermissionLauncher.launch(
+                    Manifest.permission.POST_NOTIFICATIONS
+                )
+            }
+        }
+
+        val database = AppDatabase.getInstance(applicationContext)
+
+        val notificationManager =
+            OrderNotificationManager(applicationContext)
+
+        val menuRepository = MenuRepository(database.menuDao())
+        val pedidoRepository = PedidoRepository(database.pedidoDao())
+
+        // AutenticaciÃ³n y usuarios internos
+        val authRepository = AuthRepository(database.usuarioDao())
+
+        val authViewModel = ViewModelProvider(
+            this,
+            AuthViewModelFactory(authRepository)
+        )[AuthViewModel::class.java]
+
+        // GestiÃ³n de usuarios desde administraciÃ³n
+        val usuariosViewModel = ViewModelProvider(
+            this,
+            UsuariosViewModelFactory(authRepository)
+        )[UsuariosViewModel::class.java]
+
+        // AdministraciÃ³n del menÃº
+        val adminViewModel = ViewModelProvider(
+            this,
+            AdminViewModelFactory(menuRepository)
+        )[AdminViewModel::class.java]
+
+        // Operaciones de caja y cocina
+        val operationsViewModel = ViewModelProvider(
+            this,
+            OperationsViewModelFactory(
+                database.pedidoDao(),
+                notificationManager
+            )
+        )[OperationsViewModel::class.java]
+
+        // Cliente y pedidos
+        val clienteViewModel = ViewModelProvider(
+            this,
+            ClienteViewModelFactory(
+                menuRepository,
+                pedidoRepository
+            )
+        )[ClienteViewModel::class.java]
+
+        setContent {
+            CasaJojoTheme {
+                AppNavigation(
+                    authViewModel = authViewModel,
+                    usuariosViewModel = usuariosViewModel,
+                    adminViewModel = adminViewModel,
+                    operationsViewModel = operationsViewModel,
+                    clienteViewModel = clienteViewModel
+                )
+            }
+        }
+    }
+}
+
+
+========== app\src\main\java\com\example\casajojo\data\local\AppDatabase.kt ==========
+
+package com.example.casajojo.data.local
+
+import android.content.Context
+import androidx.room.Database
+import androidx.room.Room
+import androidx.room.RoomDatabase
+import androidx.room.TypeConverters
+import androidx.room.migration.Migration
+import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.casajojo.data.model.MenuItem
+import com.example.casajojo.data.model.Pedido
+import com.example.casajojo.data.model.Usuario
+
+@Database(
+    entities = [
+        MenuItem::class,
+        Pedido::class,
+        Usuario::class
+    ],
+    version = 2,
+    exportSchema = false
+)
+@TypeConverters(Converters::class)
+abstract class AppDatabase : RoomDatabase() {
+
+    abstract fun menuDao(): MenuDao
+
+    abstract fun pedidoDao(): PedidoDao
+
+    abstract fun usuarioDao(): UsuarioDao
+
+    companion object {
+
+        @Volatile
+        private var INSTANCE: AppDatabase? = null
+
+        private val MIGRATION_1_2 = object : Migration(1, 2) {
+
+            override fun migrate(
+                database: SupportSQLiteDatabase
+            ) {
+                database.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `usuarios` (
+                        `id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        `nombreCompleto` TEXT NOT NULL,
+                        `rut` TEXT NOT NULL,
+                        `correo` TEXT NOT NULL,
+                        `telefono` TEXT NOT NULL,
+                        `username` TEXT NOT NULL,
+                        `rol` TEXT NOT NULL,
+                        `passwordSalt` TEXT NOT NULL,
+                        `passwordHash` TEXT NOT NULL,
+                        `activo` INTEGER NOT NULL,
+                        `debeCambiarPassword` INTEGER NOT NULL
+                    )
+                    """.trimIndent()
+                )
+
+                database.execSQL(
+                    """
+                    CREATE UNIQUE INDEX IF NOT EXISTS
+                    `index_usuarios_username`
+                    ON `usuarios` (`username`)
+                    """.trimIndent()
+                )
+            }
+        }
+
+        fun getInstance(
+            context: Context
+        ): AppDatabase {
+            return INSTANCE ?: synchronized(this) {
+
+                val instance = Room.databaseBuilder(
+                    context.applicationContext,
+                    AppDatabase::class.java,
+                    "casajojo_database.db"
+                )
+                    .addMigrations(MIGRATION_1_2)
+                    .build()
+
+                INSTANCE = instance
+
+                instance
+            }
+        }
+    }
+}
+
+========== app\src\main\java\com\example\casajojo\data\local\Converters.kt ==========
+
+package com.example.casajojo.data.local
+
+import androidx.room.TypeConverter
+import com.example.casajojo.feature.operations.EstadoPedido
+
+class Converters {
+    @TypeConverter
+    fun fromEstadoPedido(estado: EstadoPedido): String = estado.name
+
+    @TypeConverter
+    fun toEstadoPedido(value: String): EstadoPedido = try {
+        EstadoPedido.valueOf(value)
+    } catch (e: Exception) {
+        EstadoPedido.RECIBIDO
+    }
+}
+
+========== app\src\main\java\com\example\casajojo\data\local\MenuDao.kt ==========
+
+package com.example.casajojo.data.local
+
+import androidx.room.Dao
+import androidx.room.Delete
+import androidx.room.Insert
+import androidx.room.Query
+import androidx.room.Update
+import com.example.casajojo.data.model.MenuItem
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface MenuDao {
+
+    @Query(
+        """
+        SELECT * FROM menu_items
+        WHERE fechaMenu = :fecha
+        ORDER BY nombre COLLATE NOCASE ASC
+        """
+    )
+    fun observarPorFecha(fecha: String): Flow<List<MenuItem>>
+
+    @Insert
+    suspend fun insertar(item: MenuItem)
+
+    @Update
+    suspend fun actualizar(item: MenuItem)
+
+    @Delete
+    suspend fun eliminar(item: MenuItem)
+
+    @Query(
+        """
+        UPDATE menu_items
+        SET disponible = :disponible
+        WHERE id = :id
+        """
+    )
+    suspend fun actualizarDisponibilidad(
+        id: Int,
+        disponible: Boolean
+    )
+}
+
+
+========== app\src\main\java\com\example\casajojo\data\local\PedidoDao.kt ==========
+
+package com.example.casajojo.data.local
+
+import androidx.room.*
+import com.example.casajojo.data.model.Pedido
+import com.example.casajojo.feature.operations.EstadoPedido
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface PedidoDao {
+    @Query("SELECT * FROM pedidos ORDER BY horaCreacion DESC")
+    fun observarTodos(): Flow<List<Pedido>>
+
+    @Query("SELECT * FROM pedidos WHERE estado = :estado ORDER BY horaCreacion ASC")
+    fun observarPorEstado(estado: EstadoPedido): Flow<List<Pedido>>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertar(pedido: Pedido): Long
+
+    @Update
+    suspend fun actualizar(pedido: Pedido)
+
+    @Query("UPDATE pedidos SET estado = :nuevoEstado WHERE id = :id")
+    suspend fun actualizarEstado(id: Int, nuevoEstado: EstadoPedido)
+
+    @Query("UPDATE pedidos SET pagado = :pagado WHERE id = :id")
+    suspend fun actualizarPago(id: Int, pagado: Boolean)
+
+    @Delete
+    suspend fun eliminar(pedido: Pedido)
+}
+
+========== app\src\main\java\com\example\casajojo\data\model\MenuItem.kt ==========
+
+package com.example.casajojo.data.model
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+
+@Entity(tableName = "menu_items")
+data class MenuItem(
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
+
+    val nombre: String,
+    val descripcion: String,
+    val precio: Int,
+    val disponible: Boolean = true,
+    val imagenUri: String? = null,
+    val fechaMenu: String
+)
+
+
+========== app\src\main\java\com\example\casajojo\data\model\Pedido.kt ==========
+
+package com.example.casajojo.data.model
+
+import androidx.room.Entity
+import androidx.room.PrimaryKey
+import com.example.casajojo.feature.operations.EstadoPedido
+
+@Entity(tableName = "pedidos")
+data class Pedido(
+    @PrimaryKey(autoGenerate = true)
+    val id: Int = 0,
+    val clienteNombre: String,
+    val clienteTelefono: String = "",
+    val detalleItems: String, // ejemplo: 1x menu cazuela, 1x ensalada mixta, 1x flan
+    val restricciones: String = "", // ejemplo: sin sal o sin cebolla
+    val horaCreacion: Long = System.currentTimeMillis(), // timestamp en milisegundos
+    val horaComprometida: String, // formato hh:mm por ejemplo: 13:30
+    val total: Int,
+    val estado: EstadoPedido = EstadoPedido.RECIBIDO,
+    val pagado: Boolean = false,
+    val metodoPago: String = "Efectivo"
+)
+
+========== app\src\main\java\com\example\casajojo\data\model\DetallePedido.kt ==========
+
+package com.example.casajojo.data.model
+
+data class DetallePedido(
+    val menuItemId: Int,
+    val nombrePlato: String,
+    val precioUnitario: Int,
+    val cantidad: Int
+) {
+    val subtotal: Int
+        get() = precioUnitario * cantidad
+}
+
+fun List<DetallePedido>.calcularTotal(): Int =
+    sumOf { it.subtotal }
+
+fun List<DetallePedido>.contarPlatos(): Int =
+    sumOf { it.cantidad }
+
+fun List<DetallePedido>.aTextoDetalle(): String =
+    joinToString(separator = ", ") { linea ->
+        "${linea.cantidad}x ${linea.nombrePlato}"
+    }
+
+
+========== app\src\main\java\com\example\casajojo\data\repository\MenuRepository.kt ==========
+
+package com.example.casajojo.data.repository
+
+import com.example.casajojo.data.local.MenuDao
+import com.example.casajojo.data.model.MenuItem
+import kotlinx.coroutines.flow.Flow
+
+class MenuRepository(
+    private val dao: MenuDao
+) {
+
+    fun observarMenuDelDia(
+        fecha: String
+    ): Flow<List<MenuItem>> {
+        return dao.observarPorFecha(fecha)
+    }
+
+    suspend fun guardar(item: MenuItem) {
+        if (item.id == 0) {
+            dao.insertar(item)
+        } else {
+            dao.actualizar(item)
+        }
+    }
+
+    suspend fun eliminar(item: MenuItem) {
+        dao.eliminar(item)
+    }
+
+    suspend fun cambiarDisponibilidad(
+        id: Int,
+        disponible: Boolean
+    ) {
+        dao.actualizarDisponibilidad(id, disponible)
+    }
+}
+
+
+========== app\src\main\java\com\example\casajojo\data\repository\PedidoRepository.kt ==========
+
+package com.example.casajojo.data.repository
+
+import com.example.casajojo.data.local.PedidoDao
+import com.example.casajojo.data.model.Pedido
+import kotlinx.coroutines.flow.Flow
+
+class PedidoRepository(
+    private val dao: PedidoDao
+) {
+
+    fun observarPedidos(): Flow<List<Pedido>> {
+        return dao.observarTodos()
+    }
+
+    suspend fun registrar(pedido: Pedido): Int {
+        return dao.insertar(pedido).toInt()
+    }
+
+    companion object {
+        const val RETIRO_LO_ANTES_POSIBLE = "Lo antes posible"
+    }
+}
+
+
+========== app\src\main\java\com\example\casajojo\feature\admin\AdminScreen.kt ==========
+
+package com.example.casajojo.feature.admin
+
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.unit.dp
+import com.example.casajojo.data.model.MenuItem
+import java.text.NumberFormat
+import java.util.Locale
+
+@Composable
+fun AdminScreen(
+    viewModel: AdminViewModel,
+    onAgregarClick: () -> Unit,
+    onEditarClick: (MenuItem) -> Unit,
+    onGestionUsuariosClick: () -> Unit
+) {
+    val menu by viewModel.menuItems.collectAsState()
+    val mensaje by viewModel.mensaje.collectAsState()
+
+    var platoAEliminar by remember {
+        mutableStateOf<MenuItem?>(null)
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        // Encabezado de administraciÃ³n
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.primaryContainer
+            )
+        ) {
+            Column(
+                modifier = Modifier.padding(20.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = "LA CASA JO-JO",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                Text(
+                    text = "AdministraciÃ³n del menÃº",
+                    style = MaterialTheme.typography.headlineSmall
+                )
+
+                Text(
+                    text = "Gestiona los platos y su disponibilidad.",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+        }
+
+
+        // Acceso al formulario para agregar platos
+        Button(
+            onClick = {
+                viewModel.nuevoPlato()
+                onAgregarClick()
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Agregar plato")
+        }
+
+        // Acceso a la gestiÃ³n de usuarios
+        Button(
+            onClick = onGestionUsuariosClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Gestionar usuarios")
+        }
+
+
+        // Mensajes del ViewModel
+        mensaje?.let { texto ->
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor =
+                        MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = texto,
+                        modifier = Modifier.weight(1f),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+
+                    TextButton(
+                        onClick = viewModel::limpiarMensaje
+                    ) {
+                        Text("Cerrar")
+                    }
+                }
+            }
+        }
+
+        // Resumen de productos
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = "Platos del menÃº",
+                style = MaterialTheme.typography.titleMedium
+            )
+
+            Surface(
+                shape = MaterialTheme.shapes.medium,
+                color = MaterialTheme.colorScheme.secondaryContainer
+            ) {
+                Text(
+                    text = "${menu.size} registrados",
+                    modifier = Modifier.padding(
+                        horizontal = 12.dp,
+                        vertical = 6.dp
+                    ),
+                    style = MaterialTheme.typography.labelMedium
+                )
+            }
+        }
+
+        // Lista agrupada por precio
+        LazyColumn(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth(),
+            contentPadding = PaddingValues(bottom = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            if (menu.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "TodavÃ­a no hay platos",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+
+                            Text(
+                                text = "Agrega un plato para comenzar " +
+                                        "a organizar el menÃº.",
+                                style = MaterialTheme.typography.bodyMedium
+                            )
+                        }
+                    }
+                }
+            } else {
+                val grupos = menu.groupBy { it.precio }.toSortedMap()
+
+                grupos.forEach { (precio, platos) ->
+                    item(key = "precio-$precio") {
+                        Text(
+                            text = "PLATOS DE ${formatearPrecio(precio)}",
+                            modifier = Modifier.padding(
+                                top = 8.dp,
+                                bottom = 2.dp
+                            ),
+                            style = MaterialTheme.typography.titleMedium,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    items(
+                        items = platos,
+                        key = { plato ->
+                            "plato-${plato.id}-${plato.nombre}"
+                        }
+                    ) { plato ->
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .animateContentSize(),
+                            elevation = CardDefaults.cardElevation(
+                                defaultElevation = 2.dp
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(16.dp),
+                                verticalArrangement =
+                                    Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = plato.nombre,
+                                    style = MaterialTheme.typography.titleLarge
+                                )
+
+                                if (plato.descripcion.isNotBlank()) {
+                                    Text(
+                                        text = plato.descripcion,
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                }
+
+                                Text(
+                                    text = formatearPrecio(plato.precio),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+
+                                Surface(
+                                    shape = MaterialTheme.shapes.small,
+                                    color = if (plato.disponible) {
+                                        MaterialTheme.colorScheme
+                                            .secondaryContainer
+                                    } else {
+                                        MaterialTheme.colorScheme
+                                            .errorContainer
+                                    }
+                                ) {
+                                    Text(
+                                        text = if (plato.disponible) {
+                                            "Disponible para pedidos"
+                                        } else {
+                                            "Agotado"
+                                        },
+                                        modifier = Modifier.padding(
+                                            horizontal = 10.dp,
+                                            vertical = 5.dp
+                                        ),
+                                        style = MaterialTheme.typography.labelMedium
+                                    )
+                                }
+
+                                Row(
+                                    horizontalArrangement =
+                                        Arrangement.spacedBy(8.dp)
+                                ) {
+                                    TextButton(
+                                        onClick = {
+                                            viewModel.cargarPlato(plato)
+                                            onEditarClick(plato)
+                                        }
+                                    ) {
+                                        Text("Editar")
+                                    }
+
+                                    TextButton(
+                                        onClick = {
+                                            viewModel.cambiarDisponibilidad(
+                                                plato
+                                            )
+                                        }
+                                    ) {
+                                        Text(
+                                            if (plato.disponible) {
+                                                "Agotar"
+                                            } else {
+                                                "Activar"
+                                            }
+                                        )
+                                    }
+                                }
+
+                                TextButton(
+                                    onClick = {
+                                        platoAEliminar = plato
+                                    }
+                                ) {
+                                    Text(
+                                        text = "Eliminar plato",
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // ConfirmaciÃ³n antes de eliminar
+    platoAEliminar?.let { plato ->
+        AlertDialog(
+            onDismissRequest = {
+                platoAEliminar = null
+            },
+            title = {
+                Text("Eliminar plato")
+            },
+            text = {
+                Text(
+                    "Â¿Seguro que deseas eliminar " +
+                            "\"${plato.nombre}\" del menÃº?"
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        viewModel.eliminarPlato(plato)
+                        platoAEliminar = null
+                    }
+                ) {
+                    Text("Eliminar")
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        platoAEliminar = null
+                    }
+                ) {
+                    Text("Cancelar")
+                }
+            }
+        )
+    }
+}
+
+private fun formatearPrecio(precio: Int): String {
+    val formato = NumberFormat.getIntegerInstance(
+        Locale("es", "CL")
+    )
+    return "\$" + formato.format(precio)
+}
+
+
+========== app\src\main\java\com\example\casajojo\feature\admin\AdminViewModel.kt ==========
+
+
+package com.example.casajojo.feature.admin
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
+import com.example.casajojo.data.model.MenuItem
+import com.example.casajojo.data.repository.MenuRepository
+import java.time.LocalDate
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+data class MenuFormState(
+    val id: Int? = null,
+    val nombre: String = "",
+    val descripcion: String = "",
+    val precio: String = "",
+    val disponible: Boolean = true,
+    val imagenUri: String? = null,
+    val fechaMenu: String = LocalDate.now().toString(),
+    val errores: MenuFormErrors = MenuFormErrors()
+)
+
+class AdminViewModel(
+    private val repository: MenuRepository
+) : ViewModel() {
+
+    private val fechaHoy = LocalDate.now().toString()
+
+    val menuItems: StateFlow<List<MenuItem>> =
+        repository.observarMenuDelDia(fechaHoy).stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
+    private val _form = MutableStateFlow(
+        MenuFormState(fechaMenu = fechaHoy)
+    )
+    val form: StateFlow<MenuFormState> = _form.asStateFlow()
+
+    private val _mensaje = MutableStateFlow<String?>(null)
+    val mensaje: StateFlow<String?> = _mensaje.asStateFlow()
+
+    fun nuevoPlato() {
+        _form.value = MenuFormState(fechaMenu = fechaHoy)
+    }
+
+    fun cargarPlato(item: MenuItem) {
+        _form.value = MenuFormState(
+            id = item.id,
+            nombre = item.nombre,
+            descripcion = item.descripcion,
+            precio = item.precio.toString(),
+            disponible = item.disponible,
+            imagenUri = item.imagenUri,
+            fechaMenu = item.fechaMenu
+        )
+    }
+
+    fun onNombreChange(valor: String) {
+        _form.update {
+            it.copy(
+                nombre = valor,
+                errores = it.errores.copy(nombre = null)
+            )
+        }
+    }
+
+    fun onDescripcionChange(valor: String) {
+        _form.update {
+            it.copy(
+                descripcion = valor,
+                errores = it.errores.copy(descripcion = null)
+            )
+        }
+    }
+
+    fun onPrecioChange(valor: String) {
+        _form.update {
+            it.copy(
+                precio = valor,
+                errores = it.errores.copy(precio = null)
+            )
+        }
+    }
+
+    fun onDisponibleChange(valor: Boolean) {
+        _form.update { it.copy(disponible = valor) }
+    }
+
+    fun onImagenChange(uri: String?) {
+        _form.update { it.copy(imagenUri = uri) }
+    }
+
+    fun guardarPlato(): Boolean {
+        val actual = _form.value
+
+        val errores = validarMenu(
+            nombre = actual.nombre,
+            descripcion = actual.descripcion,
+            precio = actual.precio
+        )
+
+        if (errores.tieneErrores) {
+            _form.update { it.copy(errores = errores) }
+            return false
+        }
+
+        val item = MenuItem(
+            id = actual.id ?: 0,
+            nombre = actual.nombre.trim(),
+            descripcion = actual.descripcion.trim(),
+            precio = actual.precio.toInt(),
+            disponible = actual.disponible,
+            imagenUri = actual.imagenUri,
+            fechaMenu = actual.fechaMenu
+        )
+
+        viewModelScope.launch {
+            repository.guardar(item)
+
+            _mensaje.value = if (actual.id == null) {
+                "Plato agregado al menÃº."
+            } else {
+                "Cambios guardados correctamente."
+            }
+
+            _form.value = MenuFormState(fechaMenu = fechaHoy)
+        }
+
+        return true
+    }
+
+    fun cambiarDisponibilidad(item: MenuItem) {
+        viewModelScope.launch {
+            repository.cambiarDisponibilidad(
+                id = item.id,
+                disponible = !item.disponible
+            )
+            _mensaje.value = "Disponibilidad actualizada."
+        }
+    }
+
+    fun eliminarPlato(item: MenuItem) {
+        viewModelScope.launch {
+            repository.eliminar(item)
+            _mensaje.value = "Plato eliminado del menÃº."
+        }
+    }
+
+    fun limpiarMensaje() {
+        _mensaje.value = null
+    }
+}
+
+
+========== app\src\main\java\com\example\casajojo\feature\admin\AdminViewModelFactory.kt ==========
+
+package com.example.casajojo.feature.admin
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import com.example.casajojo.data.repository.MenuRepository
+
+class AdminViewModelFactory(
+    private val repository: MenuRepository
+) : ViewModelProvider.Factory {
+
+    override fun <T : ViewModel> create(
+        modelClass: Class<T>
+    ): T {
+        if (modelClass.isAssignableFrom(AdminViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return AdminViewModel(repository) as T
+        }
+
+        throw IllegalArgumentException(
+            "ViewModel desconocido: ${modelClass.name}"
+        )
+    }
+}
+
+
+========== app\src\main\java\com\example\casajojo\feature\admin\MenuFormScreen.kt ==========
+
+package com.example.casajojo.feature.admin
+
+import android.content.Intent
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Button
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+
+@Composable
+fun MenuFormScreen(
+    viewModel: AdminViewModel,
+    onVolver: () -> Unit
+) {
+    val form by viewModel.form.collectAsState()
+    val context = LocalContext.current
+
+    val selectorImagen = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            runCatching {
+                context.contentResolver.takePersistableUriPermission(
+                    uri,
+                    Intent.FLAG_GRANT_READ_URI_PERMISSION
+                )
+            }
+
+            viewModel.onImagenChange(uri.toString())
+        }
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = if (form.id == null) {
+                "Registrar plato"
+            } else {
+                "Editar plato"
+            },
+            style = MaterialTheme.typography.headlineMedium
+        )
+
+        Text("Fecha del menÃº: ${form.fechaMenu}")
+
+        if (form.imagenUri != null) {
+            AsyncImage(
+                model = form.imagenUri,
+                contentDescription = "FotografÃ­a del plato",
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(180.dp),
+                contentScale = ContentScale.Crop
+            )
+        }
+
+        Button(
+            onClick = {
+                selectorImagen.launch(
+                    PickVisualMediaRequest(
+                        ActivityResultContracts.PickVisualMedia.ImageOnly
+                    )
+                )
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Seleccionar fotografÃ­a")
+        }
+
+        OutlinedTextField(
+            value = form.nombre,
+            onValueChange = viewModel::onNombreChange,
+            label = { Text("Nombre del plato") },
+            isError = form.errores.nombre != null,
+            supportingText = {
+                form.errores.nombre?.let {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        OutlinedTextField(
+            value = form.descripcion,
+            onValueChange = viewModel::onDescripcionChange,
+            label = { Text("DescripciÃ³n") },
+            minLines = 3,
+            isError = form.errores.descripcion != null,
+            supportingText = {
+                form.errores.descripcion?.let {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        OutlinedTextField(
+            value = form.precio,
+            onValueChange = viewModel::onPrecioChange,
+            label = { Text("Precio en pesos chilenos") },
+            keyboardOptions = KeyboardOptions(
+                keyboardType = KeyboardType.Number
+            ),
+            isError = form.errores.precio != null,
+            supportingText = {
+                form.errores.precio?.let {
+                    Text(
+                        text = it,
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Row(
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Switch(
+                checked = form.disponible,
+                onCheckedChange = viewModel::onDisponibleChange
+            )
+
+            Text(
+                if (form.disponible) {
+                    "Plato disponible"
+                } else {
+                    "Plato agotado"
+                }
+            )
+        }
+
+        Button(
+            onClick = {
+                if (viewModel.guardarPlato()) {
+                    onVolver()
+                }
+            },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Guardar plato")
+        }
+
+        TextButton(
+            onClick = onVolver,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Cancelar")
+        }
+    }
+}
+
+
+========== app\src\main\java\com\example\casajojo\feature\admin\MenuValidator.kt ==========
+
+
+package com.example.casajojo.feature.admin
+
+data class MenuFormErrors(
+    val nombre: String? = null,
+    val descripcion: String? = null,
+    val precio: String? = null
+) {
+    val tieneErrores: Boolean
+        get() = nombre != null ||
+                descripcion != null ||
+                precio != null
+}
+
+fun validarMenu(
+    nombre: String,
+    descripcion: String,
+    precio: String
+): MenuFormErrors {
+
+    val precioNumero = precio.trim().toIntOrNull()
+
+    return MenuFormErrors(
+        nombre = if (nombre.isBlank()) {
+            "Ingresa el nombre del plato."
+        } else {
+            null
+        },
+
+        descripcion = if (descripcion.isBlank()) {
+            "Ingresa una descripciÃ³n."
+        } else {
+            null
+        },
+
+        precio = when {
+            precio.isBlank() ->
+                "Ingresa el precio."
+
+            precioNumero == null ->
+                "El precio debe ser un nÃºmero entero."
+
+            precioNumero <= 0 ->
+                "El precio debe ser mayor que cero."
+
+            else -> null
+        }
+    )
+}
+
+
+========== app\src\main\java\com\example\casajojo\feature\operations\OperationsViewModel.kt ==========
+
+package com.example.casajojo.feature.operations
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.example.casajojo.core.notifications.OrderNotificationManager
+import com.example.casajojo.data.local.PedidoDao
+import com.example.casajojo.data.model.Pedido
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
+import java.text.SimpleDateFormat
+import java.util.Calendar
+import java.util.Date
+import java.util.Locale
+
+class OperationsViewModel(
+    private val pedidoDao: PedidoDao,
+    private val notificationManager: OrderNotificationManager
+) : ViewModel() {
+
+    val pedidos: StateFlow<List<Pedido>> = pedidoDao.observarTodos().stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000),
+        initialValue = emptyList()
+    )
+
+    fun cambiarEstadoPedido(pedido: Pedido, nuevoEstado: EstadoPedido) {
+        viewModelScope.launch {
+            pedidoDao.actualizarEstado(pedido.id, nuevoEstado)
+            notificationManager.notificarCambioEstado(pedido.id, pedido.clienteNombre, nuevoEstado)
+        }
+    }
+
+    fun cambiarEstadoPago(pedidoId: Int, pagado: Boolean) {
+        viewModelScope.launch {
+            pedidoDao.actualizarPago(pedidoId, pagado)
+        }
+    }
+
+
+    //la dema para simular
+    fun crearPedidoDemo() {
+        viewModelScope.launch {
+            val horaActual = Calendar.getInstance()
+            val horaComprometidaMs = horaActual.timeInMillis + (20 * 60 * 1000) // +20 min
+            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+
+            val demo = Pedido(
+                clienteNombre = "Cliente Demo #${(10..99).random()}",
+                clienteTelefono = "+56987654321",
+                detalleItems = "1x MenÃº Ejecutivo Cazuela, 1x Ensalada Mixta, 1x Postre Flan",
+                restricciones = if (listOf(true, false).random()) "Alergia al manÃ­, sin sal en ensalada" else "",
+                horaCreacion = System.currentTimeMillis(),
+                horaComprometida = sdf.format(Date(horaComprometidaMs)),
+                total = 6500,
+                estado = EstadoPedido.RECIBIDO,
+                pagado = false
+            )
+            pedidoDao.insertar(demo)
+        }
+    }
+
+
+    //calcula si el pedido esta atrasado comparando la hora actual con la hora solicitada
+    fun estaAtrasado(pedido: Pedido): Boolean {
+        if (pedido.estado == EstadoPedido.ENTREGADO || pedido.estado == EstadoPedido.CANCELADO) return false
+
+        // si es lo antes posible, ver si han pasado mÃ¡s de 20 minutos desde su creacion
+        if (pedido.horaComprometida == "Lo antes posible") {
+            val tiempoLimiteMs = 20 * 60 * 1000 // 20 minutos
+            return (System.currentTimeMillis() - pedido.horaCreacion) > tiempoLimiteMs
+        }
+
+        // Para horas especÃ­ficas (ejemplo 14:30)
+        return try {
+            val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+            val horaActualStr = sdf.format(Date())
+            val ahora = sdf.parse(horaActualStr)
+            val comprometida = sdf.parse(pedido.horaComprometida)
+
+            if (ahora != null && comprometida != null) {
+                ahora.after(comprometida)
+            } else false
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    fun formatearHora(timestampMs: Long): String {
+        val sdf = SimpleDateFormat("HH:mm", Locale.getDefault())
+        return sdf.format(Date(timestampMs))
+    }
+}
+
+class OperationsViewModelFactory(
+    private val pedidoDao: PedidoDao,
+    private val notificationManager: OrderNotificationManager
+) : ViewModelProvider.Factory {
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(OperationsViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return OperationsViewModel(pedidoDao, notificationManager) as T
+        }
+        throw IllegalArgumentException("ViewModel desconocido")
+    }
+}
+
+========== app\src\main\java\com\example\casajojo\feature\operations\EstadoPedido.kt ==========
+
+package com.example.casajojo.feature.operations
+
+enum class EstadoPedido(val etiqueta: String) {
+    RECIBIDO("Recibido"),
+    EN_PREPARACION("En PreparaciÃ³n"),
+    LISTO("Listo para Retiro"),
+    ENTREGADO("Entregado"),
+    CANCELADO("Cancelado")
+}
+
+========== app\src\main\java\com\example\casajojo\feature\caja\CajaScreen.kt ==========
+
+package com.example.casajojo.feature.caja
+
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.example.casajojo.data.model.Pedido
+import com.example.casajojo.feature.operations.EstadoPedido
+import com.example.casajojo.feature.operations.OperationsViewModel
+
+@Composable
+fun CajaScreen(viewModel: OperationsViewModel) {
+    val pedidos by viewModel.pedidos.collectAsState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Column {
+                Text(
+                    text = "Control de Caja",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "GestiÃ³n de comandas y cobros",
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            Button(onClick = { viewModel.crearPedidoDemo() }) {
+                Text("+ Demo")
+            }
+        }
+
+        if (pedidos.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("No hay comandas registradas en el sistema.")
+            }
+        } else {
+            LazyColumn(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(pedidos, key = { it.id }) { pedido ->
+                    ComandaCajaCard(pedido = pedido, viewModel = viewModel)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ComandaCajaCard(
+    pedido: Pedido,
+    viewModel: OperationsViewModel
+) {
+    val atrasado = viewModel.estaAtrasado(pedido)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessLow
+                )
+            ),
+        colors = CardDefaults.cardColors(
+            containerColor = if (atrasado) MaterialTheme.colorScheme.errorContainer
+            else MaterialTheme.colorScheme.surfaceVariant
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Pedido #${pedido.id} - ${pedido.clienteNombre}",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+
+                AssistChip(
+                    onClick = { },
+                    label = {
+                        Text(
+                            text = if (atrasado) "ATRASADO" else "A TIEMPO",
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                )
+            }
+
+            Text(text = "Detalle: ${pedido.detalleItems}")
+
+            if (pedido.restricciones.isNotBlank()) {
+                Text(
+                    text = "RestricciÃ³n: ${pedido.restricciones}",
+                    color = MaterialTheme.colorScheme.error,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(text = "Hora Pedido: ${viewModel.formatearHora(pedido.horaCreacion)}")
+                Text(
+                    text = "Hora Compromiso: ${pedido.horaComprometida}",
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Total: $${pedido.total}",
+                    style = MaterialTheme.typography.titleLarge,
+                    color = MaterialTheme.colorScheme.primary,
+                    fontWeight = FontWeight.Bold
+                )
+
+                FilterChip(
+                    selected = pedido.pagado,
+                    onClick = { viewModel.cambiarEstadoPago(pedido.id, !pedido.pagado) },
+                    label = { Text(if (pedido.pagado) "PAGADO" else "PENDIENTE PAGO") }
+                )
+            }
+
+            Divider(modifier = Modifier.padding(vertical = 4.dp))
+
+            Text(text = "Cambiar Estado:", fontWeight = FontWeight.SemiBold)
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                EstadoPedido.values().forEach { estado ->
+                    OutlinedButton(
+                        onClick = { viewModel.cambiarEstadoPedido(pedido, estado) },
+                        enabled = pedido.estado != estado,
+                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text(
+                            text = estado.etiqueta.take(6) + "..",
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+========== app\src\main\java\com\example\casajojo\feature\cocina\CocinaScreen.kt ==========
+
+package com.example.casajojo.feature.cocina
+
+import androidx.compose.animation.animateContentSize
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import com.example.casajojo.data.model.Pedido
+import com.example.casajojo.feature.operations.EstadoPedido
+import com.example.casajojo.feature.operations.OperationsViewModel
+
+@Composable
+fun CocinaScreen(viewModel: OperationsViewModel) {
+    val pedidos by viewModel.pedidos.collectAsState()
+    val comandasCocina = pedidos.filter {
+        it.estado == EstadoPedido.RECIBIDO || it.estado == EstadoPedido.EN_PREPARACION
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Text(
+            text = "Pantalla de Cocina",
+            style = MaterialTheme.typography.headlineMedium,
+            fontWeight = FontWeight.Bold
+        )
+
+        Text(
+            text = "Comandas en cola: ${comandasCocina.size}",
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        if (comandasCocina.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth(),
+                contentAlignment = Alignment.Center
+            ) {
+                Text("Sin comandas pendientes en cocina")
+            }
+        } else {
+            LazyVerticalGrid(
+                columns = GridCells.Adaptive(minSize = 280.dp),
+                modifier = Modifier.weight(1f),
+                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                items(comandasCocina, key = { it.id }) { pedido ->
+                    ComandaCocinaCard(pedido = pedido, viewModel = viewModel)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun ComandaCocinaCard(
+    pedido: Pedido,
+    viewModel: OperationsViewModel
+) {
+    val atrasado = viewModel.estaAtrasado(pedido)
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        colors = CardDefaults.cardColors(
+            containerColor = if (atrasado) MaterialTheme.colorScheme.errorContainer
+            else MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "Comanda #${pedido.id}",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Badge(
+                    containerColor = if (atrasado) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                ) {
+                    Text(
+                        text = if (atrasado) "ATRASADO" else "A TIEMPO",
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        modifier = Modifier.padding(4.dp)
+                    )
+                }
+            }
+
+            Text(
+                text = "Hora Entrega: ${pedido.horaComprometida}",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+
+            Divider()
+
+            Text(
+                text = pedido.detalleItems,
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Medium
+            )
+
+            if (pedido.restricciones.isNotBlank()) {
+                Surface(
+                    color = MaterialTheme.colorScheme.error,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        text = "NOTA / RESTRICCIÃ“N:\n${pedido.restricciones}",
+                        color = MaterialTheme.colorScheme.onError,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(8.dp)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                if (pedido.estado == EstadoPedido.RECIBIDO) {
+                    Button(
+                        onClick = { viewModel.cambiarEstadoPedido(pedido, EstadoPedido.EN_PREPARACION) },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Cocinar")
+                    }
+                } else if (pedido.estado == EstadoPedido.EN_PREPARACION) {
+                    Button(
+                        onClick = { viewModel.cambiarEstadoPedido(pedido, EstadoPedido.LISTO) },
+                        colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.tertiary),
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("Marcar Listo")
+                    }
+                }
+            }
+        }
+    }
+}
+
+========== app\src\main\java\com\example\casajojo\feature\client\ClienteViewModel.kt ==========
+
+package com.example.casajojo.feature.client
+
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.ViewModelProvider
+import androidx.lifecycle.viewModelScope
+import com.example.casajojo.data.model.DetallePedido
+import com.example.casajojo.data.model.MenuItem
+import com.example.casajojo.data.model.Pedido
+import com.example.casajojo.data.model.aTextoDetalle
+import com.example.casajojo.data.model.calcularTotal
+import com.example.casajojo.data.model.contarPlatos
+import com.example.casajojo.data.repository.MenuRepository
+import com.example.casajojo.data.repository.PedidoRepository
+import java.time.LocalDate
+import java.time.LocalTime
+import kotlin.coroutines.cancellation.CancellationException
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharingStarted
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+data class CheckoutUiState(
+    val nombre: String = "",
+    val retiroLoAntesPosible: Boolean = true,
+    val horaRetiro: String? = null,
+    val restricciones: String = "",
+    val errores: CheckoutErrores = CheckoutErrores(),
+    val guardando: Boolean = false,
+    val errorGuardado: String? = null,
+    val pedidoConfirmadoId: Int? = null
+)
+
+class ClienteViewModel(
+    menuRepository: MenuRepository,
+    private val pedidoRepository: PedidoRepository
+) : ViewModel() {
+
+    val fechaMenu: String = LocalDate.now().toString()
+
+val menuDisponible: StateFlow<List<MenuItem>?> =
+        menuRepository.observarMenuDelDia(fechaMenu)
+            .map<List<MenuItem>, List<MenuItem>?> { lista ->
+                lista.filter { it.disponible }
+            }
+            .stateIn(
+                scope = viewModelScope,
+                started = SharingStarted.Eagerly,
+                initialValue = null
+            )
+
+private val _carrito = MutableStateFlow<List<DetallePedido>>(emptyList())
+    val carrito: StateFlow<List<DetallePedido>> = _carrito.asStateFlow()
+
+    val total: StateFlow<Int> =
+        _carrito.map { it.calcularTotal() }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
+    val cantidadPlatos: StateFlow<Int> =
+        _carrito.map { it.contarPlatos() }
+            .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
+
+private val _mensaje = MutableStateFlow("")
+    val mensaje: StateFlow<String> = _mensaje.asStateFlow()
+
+    private val _mostrarMensaje = MutableStateFlow(false)
+    val mostrarMensaje: StateFlow<Boolean> = _mostrarMensaje.asStateFlow()
+
+    private var trabajoMensaje: Job? = null
+
+private val _checkout = MutableStateFlow(CheckoutUiState())
+    val checkout: StateFlow<CheckoutUiState> = _checkout.asStateFlow()
+
+val historial: StateFlow<List<Pedido>> =
+        pedidoRepository.observarPedidos()
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    private val _pedidoSeleccionadoId = MutableStateFlow<Int?>(null)
+    val pedidoSeleccionadoId: StateFlow<Int?> = _pedidoSeleccionadoId.asStateFlow()
+
+    val pedidoSeleccionado: StateFlow<Pedido?> =
+        combine(
+            _pedidoSeleccionadoId,
+            pedidoRepository.observarPedidos()
+        ) { id, pedidos ->
+            pedidos.firstOrNull { it.id == id }
+        }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
+
+fun agregarPlato(plato: MenuItem) {
+        _carrito.update { actual ->
+            val existe = actual.any { it.menuItemId == plato.id }
+            if (existe) {
+                actual.map { linea ->
+                    if (linea.menuItemId == plato.id) {
+                        linea.copy(cantidad = linea.cantidad + 1)
+                    } else {
+                        linea
+                    }
+                }
+            } else {
+                actual + DetallePedido(
+                    menuItemId = plato.id,
+                    nombrePlato = plato.nombre,
+                    precioUnitario = plato.precio,
+                    cantidad = 1
+                )
+            }
+        }
+        limpiarErrorCarrito()
+        mostrarMensajeTemporal("Agregaste ${plato.nombre} al carrito")
+    }
+
+    fun aumentarCantidad(menuItemId: Int) {
+        _carrito.update { actual ->
+            actual.map { linea ->
+                if (linea.menuItemId == menuItemId) {
+                    linea.copy(cantidad = linea.cantidad + 1)
+                } else {
+                    linea
+                }
+            }
+        }
+        limpiarErrorCarrito()
+    }
+
+    fun disminuirCantidad(menuItemId: Int) {
+        _carrito.update { actual ->
+            actual
+                .map { linea ->
+                    if (linea.menuItemId == menuItemId) {
+                        linea.copy(cantidad = linea.cantidad - 1)
+                    } else {
+                        linea
+                    }
+                }
+                .filter { it.cantidad > 0 }
+        }
+        limpiarErrorCarrito()
+    }
+
+    fun quitarPlato(menuItemId: Int) {
+        _carrito.update { actual ->
+            actual.filterNot { it.menuItemId == menuItemId }
+        }
+        limpiarErrorCarrito()
+    }
+
+fun onNombreChange(valor: String) {
+        _checkout.update {
+            it.copy(nombre = valor, errores = it.errores.copy(nombre = null))
+        }
+    }
+
+    fun onRetiroLoAntesPosibleChange(valor: Boolean) {
+        _checkout.update {
+            it.copy(
+                retiroLoAntesPosible = valor,
+                errores = it.errores.copy(horaRetiro = null)
+            )
+        }
+    }
+
+    fun onHoraRetiroSeleccionada(hora: Int, minuto: Int) {
+        val texto = hora.toString().padStart(2, '0') + ":" +
+                minuto.toString().padStart(2, '0')
+        _checkout.update {
+            it.copy(horaRetiro = texto, errores = it.errores.copy(horaRetiro = null))
+        }
+    }
+
+    fun onRestriccionesChange(valor: String) {
+        _checkout.update {
+            it.copy(
+                restricciones = valor,
+                errores = it.errores.copy(restricciones = null)
+            )
+        }
+    }
+
+    fun confirmarPedido() {
+        val estado = _checkout.value
+        if (estado.guardando) return
+
+        val carritoActual = _carrito.value
+        val idsDisponibles = menuDisponible.value
+            .orEmpty()
+            .map { it.id }
+            .toSet()
+
+        val errores = PedidoValidator.validarCheckout(
+            nombre = estado.nombre,
+            retiroLoAntesPosible = estado.retiroLoAntesPosible,
+            horaRetiro = estado.horaRetiro,
+            restricciones = estado.restricciones,
+            carrito = carritoActual,
+            idsDisponibles = idsDisponibles,
+            horaActual = LocalTime.now()
+        )
+
+        if (errores.tieneErrores) {
+            _checkout.update { it.copy(errores = errores, errorGuardado = null) }
+            return
+        }
+
+        val pedido = Pedido(
+            clienteNombre = estado.nombre.trim(),
+            detalleItems = carritoActual.aTextoDetalle(),
+            restricciones = estado.restricciones.trim(),
+            horaComprometida = if (estado.retiroLoAntesPosible) {
+                PedidoRepository.RETIRO_LO_ANTES_POSIBLE
+            } else {
+                estado.horaRetiro.orEmpty()
+            },
+            total = carritoActual.calcularTotal()
+        )
+
+        _checkout.update {
+            it.copy(
+                guardando = true,
+                errores = CheckoutErrores(),
+                errorGuardado = null
+            )
+        }
+
+        viewModelScope.launch {
+            try {
+                val idNuevo = pedidoRepository.registrar(pedido)
+
+                _pedidoSeleccionadoId.value = idNuevo
+                _carrito.value = emptyList()
+                _checkout.value = CheckoutUiState(pedidoConfirmadoId = idNuevo)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                _checkout.update {
+                    it.copy(
+                        guardando = false,
+                        errorGuardado = "No se pudo guardar tu pedido. " +
+                                "Tu carrito se mantiene; intenta nuevamente."
+                    )
+                }
+            }
+        }
+    }
+
+    fun confirmacionAtendida() {
+        _checkout.update { it.copy(pedidoConfirmadoId = null) }
+    }
+
+    fun seleccionarPedido(id: Int) {
+        _pedidoSeleccionadoId.value = id
+    }
+
+private fun limpiarErrorCarrito() {
+        _checkout.update { it.copy(errores = it.errores.copy(carrito = null)) }
+    }
+
+    private fun mostrarMensajeTemporal(texto: String) {
+        trabajoMensaje?.cancel()
+        _mensaje.value = texto
+        _mostrarMensaje.value = true
+        trabajoMensaje = viewModelScope.launch {
+            delay(2000)
+            _mostrarMensaje.value = false
+        }
+    }
+}
+
+class ClienteViewModelFactory(
+    private val menuRepository: MenuRepository,
+    private val pedidoRepository: PedidoRepository
+) : ViewModelProvider.Factory {
+
+    override fun <T : ViewModel> create(modelClass: Class<T>): T {
+        if (modelClass.isAssignableFrom(ClienteViewModel::class.java)) {
+            @Suppress("UNCHECKED_CAST")
+            return ClienteViewModel(menuRepository, pedidoRepository) as T
+        }
+        throw IllegalArgumentException("ViewModel desconocido: ${modelClass.name}")
+    }
+}
+
+
+========== app\src\main\java\com\example\casajojo\feature\client\MenuClienteScreen.kt ==========
+
+package com.example.casajojo.feature.client
+
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalIconButton
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.dp
+import coil.compose.AsyncImage
+import com.example.casajojo.R
+import com.example.casajojo.data.model.MenuItem
+import java.text.NumberFormat
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
+import java.util.Locale
+
+private val LOCALE_CHILE: Locale = Locale.forLanguageTag("es-CL")
+
+fun formatearPesos(valor: Int): String {
+    return "\$" + NumberFormat.getIntegerInstance(LOCALE_CHILE).format(valor)
+}
+
+@Composable
+fun MenuClienteScreen(
+    viewModel: ClienteViewModel,
+    onIrAlCarrito: () -> Unit,
+    onVerMisPedidos: () -> Unit
+) {
+    val menu by viewModel.menuDisponible.collectAsState()
+    val carrito by viewModel.carrito.collectAsState()
+    val total by viewModel.total.collectAsState()
+    val cantidadPlatos by viewModel.cantidadPlatos.collectAsState()
+    val mensaje by viewModel.mensaje.collectAsState()
+    val mostrarMensaje by viewModel.mostrarMensaje.collectAsState()
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        EncabezadoCliente(
+            titulo = "MenÃº del dÃ­a",
+            subtitulo = fechaLegible(viewModel.fechaMenu)
+        )
+
+        TextButton(onClick = onVerMisPedidos) {
+            Text("Ver el estado de mis pedidos")
+        }
+
+        AnimatedVisibility(
+            visible = mostrarMensaje,
+            enter = fadeIn() + expandVertically(),
+            exit = fadeOut() + shrinkVertically()
+        ) {
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer
+                )
+            ) {
+                Row(
+                    modifier = Modifier.padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_cliente_check),
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = mensaje,
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+            }
+        }
+
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+        ) {
+            val lista = menu
+            when {
+                lista == null -> {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center)
+                    )
+                }
+
+                lista.isEmpty() -> {
+                    Card(modifier = Modifier.fillMaxWidth()) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "AÃºn no hay platos disponibles",
+                                style = MaterialTheme.typography.titleMedium
+                            )
+                            Text(
+                                text = "Cuando el local publique el menÃº de hoy, aparecerÃ¡ aquÃ­.",
+                                style = MaterialTheme.typography.bodyMedium,
+                                textAlign = TextAlign.Center
+                            )
+                        }
+                    }
+                }
+
+                else -> {
+                    val grupos = lista.groupBy { it.precio }.toSortedMap()
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(bottom = 8.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        grupos.forEach { (precio, platos) ->
+                            item(key = "precio-$precio") {
+                                Text(
+                                    text = "PLATOS DE ${formatearPesos(precio)}",
+                                    modifier = Modifier.padding(top = 8.dp),
+                                    style = MaterialTheme.typography.titleMedium,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+
+                            items(
+                                items = platos,
+                                key = { plato -> "plato-${plato.id}" }
+                            ) { plato ->
+                                val cantidad = carrito
+                                    .firstOrNull { it.menuItemId == plato.id }
+                                    ?.cantidad ?: 0
+
+                                TarjetaPlato(
+                                    plato = plato,
+                                    cantidad = cantidad,
+                                    onAgregar = { viewModel.agregarPlato(plato) },
+                                    onQuitar = { viewModel.disminuirCantidad(plato.id) }
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        AnimatedVisibility(
+            visible = carrito.isNotEmpty(),
+            enter = slideInVertically { altura -> altura } + fadeIn(),
+            exit = slideOutVertically { altura -> altura } + fadeOut()
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = MaterialTheme.shapes.large,
+                color = MaterialTheme.colorScheme.primaryContainer,
+                tonalElevation = 3.dp
+            ) {
+                Row(
+                    modifier = Modifier.padding(16.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = if (cantidadPlatos == 1) "1 plato" else "$cantidadPlatos platos",
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                        Text(
+                            text = formatearPesos(total),
+                            style = MaterialTheme.typography.titleLarge
+                        )
+                    }
+
+                    Button(onClick = onIrAlCarrito) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_cliente_carrito),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Ver carrito")
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun TarjetaPlato(
+    plato: MenuItem,
+    cantidad: Int,
+    onAgregar: () -> Unit,
+    onQuitar: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .animateContentSize(),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            if (plato.imagenUri != null) {
+                AsyncImage(
+                    model = plato.imagenUri,
+                    contentDescription = "FotografÃ­a de ${plato.nombre}",
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(140.dp)
+                        .clip(MaterialTheme.shapes.medium),
+                    contentScale = ContentScale.Crop
+                )
+            }
+
+            Text(
+                text = plato.nombre,
+                style = MaterialTheme.typography.titleLarge
+            )
+
+            if (plato.descripcion.isNotBlank()) {
+                Text(
+                    text = plato.descripcion,
+                    style = MaterialTheme.typography.bodyMedium
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = formatearPesos(plato.precio),
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+
+                if (cantidad == 0) {
+                    Button(onClick = onAgregar) {
+                        Icon(
+                            painter = painterResource(id = R.drawable.ic_cliente_carrito),
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text("Agregar")
+                    }
+                } else {
+                    SelectorCantidad(
+                        cantidad = cantidad,
+                        onQuitar = onQuitar,
+                        onAgregar = onAgregar
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+internal fun SelectorCantidad(
+    cantidad: Int,
+    onQuitar: () -> Unit,
+    onAgregar: () -> Unit
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        FilledTonalIconButton(onClick = onQuitar) {
+            Text(text = "âˆ’", style = MaterialTheme.typography.titleLarge)
+        }
+
+        AnimatedContent(
+            targetState = cantidad,
+            label = "cantidad"
+        ) { valor ->
+            Text(
+                text = valor.toString(),
+                modifier = Modifier.widthIn(min = 32.dp),
+                style = MaterialTheme.typography.titleMedium,
+                textAlign = TextAlign.Center
+            )
+        }
+
+        FilledTonalIconButton(onClick = onAgregar) {
+            Text(text = "+", style = MaterialTheme.typography.titleLarge)
+        }
+    }
+}
+
+@Composable
+internal fun EncabezadoCliente(
+    titulo: String,
+    subtitulo: String
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.primaryContainer
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Text(
+                text = "LA CASA JO-JO",
+                style = MaterialTheme.typography.labelLarge,
+                color = MaterialTheme.colorScheme.primary
+            )
+            Text(
+                text = titulo,
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Text(
+                text = subtitulo,
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
+
+private fun fechaLegible(fechaIso: String): String {
+    return try {
+        val formato = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", LOCALE_CHILE)
+        LocalDate.parse(fechaIso)
+            .format(formato)
+            .replaceFirstChar { it.titlecase(LOCALE_CHILE) }
+    } catch (e: Exception) {
+        fechaIso
+    }
+}
+
+
+========== app\src\main\java\com\example\casajojo\feature\client\CheckoutScreen.kt ==========
+
+package com.example.casajojo.feature.client
+
+import android.app.TimePickerDialog
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.unit.dp
+import com.example.casajojo.R
+import java.time.LocalTime
+
+@Composable
+fun CheckoutScreen(
+    viewModel: ClienteViewModel,
+    onVolverAlCarrito: () -> Unit,
+    onPedidoConfirmado: () -> Unit
+) {
+    val estado by viewModel.checkout.collectAsState()
+    val carrito by viewModel.carrito.collectAsState()
+    val total by viewModel.total.collectAsState()
+    val context = LocalContext.current
+    val errores = estado.errores
+
+    LaunchedEffect(estado.pedidoConfirmadoId) {
+        if (estado.pedidoConfirmadoId != null) {
+            viewModel.confirmacionAtendida()
+            onPedidoConfirmado()
+        }
+    }
+
+    fun abrirSelectorHora() {
+        val inicial = estado.horaRetiro
+            ?.let { runCatching { LocalTime.parse(it) }.getOrNull() }
+            ?: LocalTime.now()
+
+        TimePickerDialog(
+            context,
+            { _, hora, minuto -> viewModel.onHoraRetiroSeleccionada(hora, minuto) },
+            inicial.hour,
+            inicial.minute,
+            true
+        ).show()
+    }
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(16.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        EncabezadoCliente(
+            titulo = "Confirmar pedido",
+            subtitulo = "Completa tus datos para enviar la comanda al local."
+        )
+
+        Card(modifier = Modifier.fillMaxWidth()) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "Resumen",
+                    style = MaterialTheme.typography.titleMedium
+                )
+                if (carrito.isEmpty()) {
+                    Text(
+                        text = "No hay platos en tu carrito.",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                carrito.forEach { linea ->
+                    Text(
+                        text = "${linea.cantidad}x ${linea.nombrePlato} â€” " +
+                                formatearPesos(linea.subtotal),
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                }
+                HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+                Text(
+                    text = "Total: ${formatearPesos(total)}",
+                    style = MaterialTheme.typography.titleMedium,
+                    color = MaterialTheme.colorScheme.primary
+                )
+            }
+        }
+
+        AnimatedVisibility(visible = errores.carrito != null) {
+            MensajeError(texto = errores.carrito.orEmpty())
+        }
+
+        OutlinedTextField(
+            value = estado.nombre,
+            onValueChange = viewModel::onNombreChange,
+            label = { Text("Nombre para el retiro") },
+            singleLine = true,
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_cliente_persona),
+                    contentDescription = null
+                )
+            },
+            trailingIcon = {
+                if (errores.nombre != null) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_cliente_error),
+                        contentDescription = "Campo con error",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            isError = errores.nombre != null,
+            supportingText = {
+                errores.nombre?.let {
+                    Text(text = it, color = MaterialTheme.colorScheme.error)
+                }
+            },
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Words,
+                imeAction = ImeAction.Next
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        Text(
+            text = "Hora de retiro",
+            style = MaterialTheme.typography.titleMedium
+        )
+
+        OpcionRetiro(
+            texto = "Lo antes posible",
+            seleccionado = estado.retiroLoAntesPosible,
+            onClick = { viewModel.onRetiroLoAntesPosibleChange(true) }
+        )
+
+        OpcionRetiro(
+            texto = "A una hora especÃ­fica",
+            seleccionado = !estado.retiroLoAntesPosible,
+            onClick = { viewModel.onRetiroLoAntesPosibleChange(false) }
+        )
+
+        AnimatedVisibility(visible = !estado.retiroLoAntesPosible) {
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                OutlinedButton(
+                    onClick = { abrirSelectorHora() },
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_cliente_hora),
+                        contentDescription = null,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = estado.horaRetiro?.let { "Retiro a las $it (cambiar)" }
+                            ?: "Seleccionar hora de retiro"
+                    )
+                }
+
+                errores.horaRetiro?.let { MensajeError(texto = it) }
+            }
+        }
+
+        OutlinedTextField(
+            value = estado.restricciones,
+            onValueChange = viewModel::onRestriccionesChange,
+            label = { Text("Observaciones o restricciones alimentarias") },
+            placeholder = { Text("Ej.: sin sal, sin cebolla") },
+            minLines = 2,
+            leadingIcon = {
+                Icon(
+                    painter = painterResource(id = R.drawable.ic_cliente_nota),
+                    contentDescription = null
+                )
+            },
+            trailingIcon = {
+                if (errores.restricciones != null) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_cliente_error),
+                        contentDescription = "Campo con error",
+                        tint = MaterialTheme.colorScheme.error
+                    )
+                }
+            },
+            isError = errores.restricciones != null,
+            supportingText = {
+                val error = errores.restricciones
+                if (error != null) {
+                    Text(text = error, color = MaterialTheme.colorScheme.error)
+                } else {
+                    Text(
+                        "Opcional Â· ${estado.restricciones.trim().length}/" +
+                                "${PedidoValidator.RESTRICCIONES_MAX}"
+                    )
+                }
+            },
+            keyboardOptions = KeyboardOptions(
+                capitalization = KeyboardCapitalization.Sentences
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+
+        AnimatedVisibility(visible = estado.errorGuardado != null) {
+            MensajeError(texto = estado.errorGuardado.orEmpty())
+        }
+
+        Button(
+            onClick = { viewModel.confirmarPedido() },
+            enabled = !estado.guardando,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            if (estado.guardando) {
+                CircularProgressIndicator(
+                    modifier = Modifier.size(20.dp),
+                    strokeWidth = 2.dp
+                )
+            } else {
+                Text("Confirmar pedido")
+            }
+        }
+
+        TextButton(
+            onClick = onVolverAlCarrito,
+            enabled = !estado.guardando,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Volver al carrito")
+        }
+    }
+}
+
+@Composable
+private fun OpcionRetiro(
+    texto: String,
+    seleccionado: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(
+                selected = seleccionado,
+                onClick = onClick,
+                role = Role.RadioButton
+            )
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        RadioButton(
+            selected = seleccionado,
+            onClick = null
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(text = texto, style = MaterialTheme.typography.bodyLarge)
+    }
+}
+
+@Composable
+private fun MensajeError(texto: String) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(
+            painter = painterResource(id = R.drawable.ic_cliente_error),
+            contentDescription = null,
+            tint = MaterialTheme.colorScheme.error,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(6.dp))
+        Text(
+            text = texto,
+            color = MaterialTheme.colorScheme.error,
+            style = MaterialTheme.typography.bodySmall
+        )
+    }
+}
+
+
+========== app\src\main\java\com\example\casajojo\navigation\AppNavigation.kt ==========
+
+
+package com.example.casajojo.navigation
+
+import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.Modifier
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.currentBackStackEntryAsState
+import androidx.navigation.compose.rememberNavController
+import com.example.casajojo.feature.admin.AdminScreen
+import com.example.casajojo.feature.admin.AdminViewModel
+import com.example.casajojo.feature.admin.MenuFormScreen
+import com.example.casajojo.feature.auth.AuthViewModel
+import com.example.casajojo.feature.auth.CambiarPasswordScreen
+import com.example.casajojo.feature.auth.ClienteDatosScreen
+import com.example.casajojo.feature.auth.InicioScreen
+import com.example.casajojo.feature.auth.LoginScreen
+import com.example.casajojo.feature.auth.RolUsuario
+import com.example.casajojo.feature.auth.UsuariosScreen
+import com.example.casajojo.feature.auth.UsuariosViewModel
+import com.example.casajojo.feature.caja.CajaScreen
+import com.example.casajojo.feature.client.CarritoScreen
+import com.example.casajojo.feature.client.CheckoutScreen
+import com.example.casajojo.feature.client.ClienteViewModel
+import com.example.casajojo.feature.client.EstadoPedidoScreen
+import com.example.casajojo.feature.client.MenuClienteScreen
+import com.example.casajojo.feature.cocina.CocinaScreen
+import com.example.casajojo.feature.operations.OperationsViewModel
+
+sealed class Screen(val route: String, val title: String) {
+    object Inicio : Screen("inicio", "CasaJojo")
+    object Login : Screen("login", "Iniciar sesiÃ³n")
+    object CambiarPassword : Screen("cambiar_password", "Seguridad")
+    object ClienteDatos : Screen("cliente_datos", "Datos del cliente")
+
+    object Admin : Screen("admin", "AdministraciÃ³n")
+    object MenuForm : Screen("menu_form", "Formulario")
+    object Usuarios : Screen("usuarios", "GestiÃ³n de usuarios")
+
+    object ClienteMenu : Screen("cliente_menu", "MenÃº")
+    object ClienteCarrito : Screen("cliente_carrito", "Carrito")
+    object ClienteCheckout : Screen("cliente_checkout", "Checkout")
+    object ClienteEstado : Screen("cliente_estado", "Estado del pedido")
+
+    object Caja : Screen("caja", "Caja")
+    object Cocina : Screen("cocina", "Cocina")
+}
+
+private fun rutaParaRol(rol: String): String {
+    return when (rol) {
+        "ADMIN" -> Screen.Admin.route
+        "CAJERA" -> Screen.Caja.route
+        "COCINA" -> Screen.Cocina.route
+        else -> Screen.Inicio.route
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun AppNavigation(
+    authViewModel: AuthViewModel,
+    usuariosViewModel: UsuariosViewModel,
+    adminViewModel: AdminViewModel,
+    operationsViewModel: OperationsViewModel,
+    clienteViewModel: ClienteViewModel
+) {
+    val navController = rememberNavController()
+
+    val authState by authViewModel.uiState.collectAsState()
+
+    val navBackStackEntry by
+    navController.currentBackStackEntryAsState()
+
+    val currentRoute = navBackStackEntry?.destination?.route
+
+    var rolSeleccionadoNombre by rememberSaveable {
+        mutableStateOf(RolUsuario.ADMIN.name)
+    }
+
+    val rolSeleccionado = RolUsuario.valueOf(
+        rolSeleccionadoNombre
+    )
+
+    var clienteNombre by rememberSaveable {
+        mutableStateOf("")
+    }
+
+    var clienteTelefono by rememberSaveable {
+        mutableStateOf("")
+    }
+
+    val rutasCliente = setOf(
+        Screen.ClienteMenu.route,
+        Screen.ClienteCarrito.route,
+        Screen.ClienteCheckout.route,
+        Screen.ClienteEstado.route
+    )
+
+    val rutasInternas = setOf(
+        Screen.Admin.route,
+        Screen.MenuForm.route,
+        Screen.Usuarios.route,
+        Screen.Caja.route,
+        Screen.Cocina.route
+    )
+
+    val mostrarBarraInterna =
+        authState.usuarioActual != null &&
+                currentRoute in rutasInternas
+
+    val mostrarBarraCliente =
+        authState.usuarioActual == null &&
+                currentRoute in rutasCliente &&
+                clienteNombre.isNotBlank()
+
+    val salir = {
+        clienteNombre = ""
+        clienteTelefono = ""
+
+        clienteViewModel.onNombreChange("")
+
+        clienteViewModel.carrito.value.forEach { detalle ->
+            clienteViewModel.quitarPlato(detalle.menuItemId)
+        }
+
+        authViewModel.cerrarSesion()
+
+        navController.navigate(Screen.Inicio.route) {
+            popUpTo(Screen.Inicio.route) {
+                inclusive = false
+            }
+            launchSingleTop = true
+        }
+    }
+
+    // DespuÃ©s de autenticar, dirigir al cambio de contraseÃ±a
+    // o a la interfaz correspondiente al rol.
+    LaunchedEffect(
+        authState.usuarioActual?.id,
+        authState.debeCambiarPassword,
+        currentRoute
+    ) {
+        val usuario = authState.usuarioActual
+            ?: return@LaunchedEffect
+
+        val destino = when {
+            currentRoute == Screen.Login.route &&
+                    authState.debeCambiarPassword ->
+                Screen.CambiarPassword.route
+
+            currentRoute == Screen.Login.route ->
+                rutaParaRol(usuario.rol)
+
+            currentRoute == Screen.CambiarPassword.route &&
+                    !authState.debeCambiarPassword ->
+                rutaParaRol(usuario.rol)
+
+            else -> null
+        }
+
+        if (destino != null && destino != currentRoute) {
+            navController.navigate(destino) {
+                popUpTo(Screen.Inicio.route) {
+                    inclusive = false
+                }
+                launchSingleTop = true
+            }
+        }
+    }
+
+    // Comprobar los permisos para acceder a las pantallas internas.
+    LaunchedEffect(
+        currentRoute,
+        authState.usuarioActual?.id,
+        authState.usuarioActual?.rol,
+        authState.debeCambiarPassword,
+        clienteNombre,
+        clienteTelefono
+    ) {
+        val rolRequerido = when (currentRoute) {
+            Screen.Admin.route,
+            Screen.MenuForm.route,
+            Screen.Usuarios.route -> "ADMIN"
+
+            Screen.Caja.route -> "CAJERA"
+
+            Screen.Cocina.route -> "COCINA"
+
+            else -> null
+        }
+
+        if (rolRequerido != null) {
+            val usuario = authState.usuarioActual
+
+            val destino = when {
+                usuario == null ->
+                    Screen.Inicio.route
+
+                authState.debeCambiarPassword ->
+                    Screen.CambiarPassword.route
+
+                usuario.rol != rolRequerido ->
+                    rutaParaRol(usuario.rol)
+
+                else -> null
+            }
+
+            if (destino != null && destino != currentRoute) {
+                navController.navigate(destino) {
+                    popUpTo(Screen.Inicio.route) {
+                        inclusive = false
+                    }
+                    launchSingleTop = true
+                }
+            }
+        }
+
+        // El cliente debe ingresar sus datos antes de entrar al menÃº.
+        if (
+            currentRoute in rutasCliente &&
+            (
+                    clienteNombre.isBlank() ||
+                            clienteTelefono.isBlank()
+                    )
+        ) {
+            navController.navigate(Screen.ClienteDatos.route) {
+                popUpTo(Screen.Inicio.route) {
+                    inclusive = false
+                }
+                launchSingleTop = true
+            }
+        }
+
+        // No permitir cambiar contraseÃ±as sin una sesiÃ³n activa.
+        if (
+            currentRoute == Screen.CambiarPassword.route &&
+            authState.usuarioActual == null
+        ) {
+            navController.navigate(Screen.Inicio.route) {
+                popUpTo(Screen.Inicio.route) {
+                    inclusive = false
+                }
+                launchSingleTop = true
+            }
+        }
+    }
+
+    // Evitar volver a pantallas internas mediante el botÃ³n AtrÃ¡s
+    // mientras exista una sesiÃ³n interna activa.
+    BackHandler(
+        enabled = authState.usuarioActual != null &&
+                (
+                        currentRoute in rutasInternas ||
+                                currentRoute == Screen.CambiarPassword.route
+                        )
+    ) {
+        // El usuario debe cerrar sesiÃ³n mediante el botÃ³n disponible.
+    }
+
+    Scaffold(
+        topBar = {
+            if (mostrarBarraInterna) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            "CasaJojo Â· " +
+                                    authState.usuarioActual?.rol.orEmpty()
+                        )
+                    },
+                    actions = {
+                        TextButton(onClick = salir) {
+                            Text("Cerrar sesiÃ³n")
+                        }
+                    }
+                )
+            } else if (mostrarBarraCliente) {
+                TopAppBar(
+                    title = {
+                        Text("CasaJojo Â· $clienteNombre")
+                    },
+                    actions = {
+                        TextButton(onClick = salir) {
+                            Text("Salir")
+                        }
+                    }
+                )
+            }
+        }
+    ) { innerPadding ->
+
+        NavHost(
+            navController = navController,
+            startDestination = Screen.Inicio.route,
+            modifier = Modifier.padding(innerPadding)
+        ) {
+
+            // Pantalla inicial
+            composable(Screen.Inicio.route) {
+                InicioScreen(
+                    onCliente = {
+                        navController.navigate(
+                            Screen.ClienteDatos.route
+                        )
+                    },
+                    onRolInterno = { rol ->
+                        rolSeleccionadoNombre = rol.name
+
+                        navController.navigate(
+                            Screen.Login.route
+                        )
+                    }
+                )
+            }
+
+            // Inicio de sesiÃ³n de los usuarios internos
+            composable(Screen.Login.route) {
+                LoginScreen(
+                    rol = rolSeleccionado,
+                    inicializando = authState.inicializando,
+                    cargando = authState.cargando,
+                    error = authState.error,
+                    onIniciarSesion = { username, password ->
+                        authViewModel.iniciarSesion(
+                            username = username,
+                            password = password,
+                            rolEsperado = rolSeleccionado
+                        )
+                    },
+                    onVolver = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            // Cambio obligatorio de contraseÃ±a
+            composable(Screen.CambiarPassword.route) {
+                val usuario = authState.usuarioActual
+
+                if (usuario != null) {
+                    CambiarPasswordScreen(
+                        username = usuario.username,
+                        cargando = authState.cargando,
+                        error = authState.error,
+                        onGuardar = { nueva, confirmacion ->
+                            authViewModel.cambiarPassword(
+                                nuevaPassword = nueva,
+                                confirmacion = confirmacion
+                            )
+                        },
+                        onCerrarSesion = salir
+                    )
+                }
+            }
+
+            // IdentificaciÃ³n bÃ¡sica del cliente
+            composable(Screen.ClienteDatos.route) {
+                ClienteDatosScreen(
+                    onContinuar = { nombre, telefono ->
+                        clienteNombre = nombre
+                        clienteTelefono = telefono
+
+                        clienteViewModel.onNombreChange(nombre)
+
+                        navController.navigate(
+                            Screen.ClienteMenu.route
+                        ) {
+                            popUpTo(Screen.Inicio.route) {
+                                inclusive = false
+                            }
+                            launchSingleTop = true
+                        }
+                    },
+                    onVolver = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            // AdministraciÃ³n del menÃº
+            composable(Screen.Admin.route) {
+                AdminScreen(
+                    viewModel = adminViewModel,
+                    onAgregarClick = {
+                        navController.navigate(
+                            Screen.MenuForm.route
+                        )
+                    },
+                    onEditarClick = { _ ->
+                        navController.navigate(
+                            Screen.MenuForm.route
+                        )
+                    },
+                    onGestionUsuariosClick = {
+                        navController.navigate(
+                            Screen.Usuarios.route
+                        )
+                    }
+                )
+            }
+
+            // Formulario para agregar o editar productos del menÃº
+            composable(Screen.MenuForm.route) {
+                MenuFormScreen(
+                    viewModel = adminViewModel,
+                    onVolver = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            // GestiÃ³n de usuarios internos
+            composable(Screen.Usuarios.route) {
+                UsuariosScreen(
+                    viewModel = usuariosViewModel,
+                    onVolver = {
+                        navController.popBackStack()
+                    }
+                )
+            }
+
+            // MenÃº del cliente
+            composable(Screen.ClienteMenu.route) {
+                MenuClienteScreen(
+                    viewModel = clienteViewModel,
+                    onIrAlCarrito = {
+                        navController.navigate(
+                            Screen.ClienteCarrito.route
+                        )
+                    },
+                    onVerMisPedidos = {
+                        navController.navigate(
+                            Screen.ClienteEstado.route
+                        )
+                    }
+                )
+            }
+
+            // Carrito del cliente
+            composable(Screen.ClienteCarrito.route) {
+                CarritoScreen(
+                    viewModel = clienteViewModel,
+                    onSeguirEligiendo = {
+                        navController.popBackStack()
+                    },
+                    onContinuar = {
+                        navController.navigate(
+                            Screen.ClienteCheckout.route
+                        )
+                    }
+                )
+            }
+
+            // ConfirmaciÃ³n del pedido
+            composable(Screen.ClienteCheckout.route) {
+                CheckoutScreen(
+                    viewModel = clienteViewModel,
+                    onVolverAlCarrito = {
+                        navController.popBackStack()
+                    },
+                    onPedidoConfirmado = {
+                        navController.navigate(
+                            Screen.ClienteEstado.route
+                        ) {
+                            popUpTo(Screen.ClienteMenu.route)
+                        }
+                    }
+                )
+            }
+
+            // Estado e historial de pedidos del cliente
+            composable(Screen.ClienteEstado.route) {
+                EstadoPedidoScreen(
+                    viewModel = clienteViewModel,
+                    onVolverAlMenu = {
+                        navController.navigate(
+                            Screen.ClienteMenu.route
+                        ) {
+                            popUpTo(Screen.ClienteMenu.route) {
+                                inclusive = true
+                            }
+                        }
+                    }
+                )
+            }
+
+            // MÃ³dulo de caja
+            composable(Screen.Caja.route) {
+                CajaScreen(
+                    viewModel = operationsViewModel
+                )
+            }
+
+            // MÃ³dulo de cocina
+            composable(Screen.Cocina.route) {
+                CocinaScreen(
+                    viewModel = operationsViewModel
+                )
+            }
+        }
+    }
+}
+
