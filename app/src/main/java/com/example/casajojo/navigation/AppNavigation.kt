@@ -13,6 +13,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import com.example.casajojo.feature.admin.AdminScreen
 import com.example.casajojo.feature.admin.AdminViewModel
+import com.example.casajojo.feature.admin.AdminDashboardScreen
 import com.example.casajojo.feature.admin.MenuFormScreen
 import com.example.casajojo.feature.auth.AuthViewModel
 import com.example.casajojo.feature.auth.CambiarPasswordScreen
@@ -31,11 +32,15 @@ import com.example.casajojo.feature.client.MenuClienteScreen
 import com.example.casajojo.feature.cocina.CocinaScreen
 import com.example.casajojo.feature.operations.OperationsViewModel
 
+
 sealed class Screen(val route: String, val title: String) {
     object Inicio : Screen("inicio", "CasaJojo")
     object Login : Screen("login", "Iniciar sesión")
     object CambiarPassword : Screen("cambiar_password", "Seguridad")
     object ClienteDatos : Screen("cliente_datos", "Datos del cliente")
+
+    // NUEVA RUTA DEL DASHBOARD
+    object Dashboard : Screen("dashboard", "Panel principal")
 
     object Admin : Screen("admin", "Administración")
     object MenuForm : Screen("menu_form", "Formulario")
@@ -50,14 +55,16 @@ sealed class Screen(val route: String, val title: String) {
     object Cocina : Screen("cocina", "Cocina")
 }
 
+
 private fun rutaParaRol(rol: String): String {
     return when (rol) {
-        "ADMIN" -> Screen.Admin.route
+        "ADMIN" -> Screen.Dashboard.route
         "CAJERA" -> Screen.Caja.route
         "COCINA" -> Screen.Cocina.route
         else -> Screen.Inicio.route
     }
 }
+
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -100,13 +107,16 @@ fun AppNavigation(
         Screen.ClienteEstado.route
     )
 
+
     val rutasInternas = setOf(
+        Screen.Dashboard.route,
         Screen.Admin.route,
         Screen.MenuForm.route,
         Screen.Usuarios.route,
         Screen.Caja.route,
         Screen.Cocina.route
     )
+
 
     val mostrarBarraInterna =
         authState.usuarioActual != null &&
@@ -182,6 +192,7 @@ fun AppNavigation(
         clienteTelefono
     ) {
         val rolRequerido = when (currentRoute) {
+            Screen.Dashboard.route,
             Screen.Admin.route,
             Screen.MenuForm.route,
             Screen.Usuarios.route -> "ADMIN"
@@ -376,6 +387,19 @@ fun AppNavigation(
                     },
                     onVolver = {
                         navController.popBackStack()
+                    }
+                )
+            }
+
+            composable(Screen.Dashboard.route) {
+                AdminDashboardScreen(
+                    adminViewModel = adminViewModel,
+                    operationsViewModel = operationsViewModel,
+                    onGestionarMenu = {
+                        navController.navigate(Screen.Admin.route)
+                    },
+                    onGestionarUsuarios = {
+                        navController.navigate(Screen.Usuarios.route)
                     }
                 )
             }
