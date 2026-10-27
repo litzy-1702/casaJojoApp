@@ -1,6 +1,8 @@
+
 package com.example.casajojo.feature.client
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -41,7 +43,8 @@ fun CarritoScreen(
     ) {
         EncabezadoCliente(
             titulo = "Tu carrito",
-            subtitulo = "Revisa los platos y las cantidades antes de confirmar."
+            subtitulo =
+                "Revisa los platos y las cantidades antes de confirmar."
         )
 
         if (carrito.isEmpty()) {
@@ -59,6 +62,7 @@ fun CarritoScreen(
                         text = "Tu carrito está vacío",
                         style = MaterialTheme.typography.titleMedium
                     )
+
                     Text(
                         text = "Agrega platos desde el menú del día.",
                         style = MaterialTheme.typography.bodyMedium
@@ -74,40 +78,49 @@ fun CarritoScreen(
             ) {
                 items(
                     items = carrito,
-                    key = { linea -> linea.menuItemId }
+                    key = { linea -> linea.lineaId }
                 ) { linea ->
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .animateItem()
+                            .animateContentSize()
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp),
                             verticalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             Text(
-                                text = linea.nombrePlato,
+                                text = linea.descripcionCompleta,
                                 style = MaterialTheme.typography.titleMedium
                             )
+
                             Text(
-                                text = "${formatearPesos(linea.precioUnitario)} c/u",
+                                text =
+                                    "${formatearPesos(linea.precioUnitario)} c/u",
                                 style = MaterialTheme.typography.bodyMedium
                             )
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
+                                horizontalArrangement =
+                                    Arrangement.SpaceBetween,
+                                verticalAlignment =
+                                    Alignment.CenterVertically
                             ) {
                                 SelectorCantidad(
                                     cantidad = linea.cantidad,
                                     onQuitar = {
-                                        viewModel.disminuirCantidad(linea.menuItemId)
+                                        viewModel.disminuirCantidad(
+                                            linea.lineaId
+                                        )
                                     },
                                     onAgregar = {
-                                        viewModel.aumentarCantidad(linea.menuItemId)
+                                        viewModel.aumentarCantidad(
+                                            linea.lineaId
+                                        )
                                     }
                                 )
+
                                 Text(
                                     text = formatearPesos(linea.subtotal),
                                     style = MaterialTheme.typography.titleMedium
@@ -115,7 +128,9 @@ fun CarritoScreen(
                             }
 
                             TextButton(
-                                onClick = { viewModel.quitarPlato(linea.menuItemId) }
+                                onClick = {
+                                    viewModel.quitarPlato(linea.lineaId)
+                                }
                             ) {
                                 Text(
                                     text = "Quitar del carrito",
@@ -130,7 +145,8 @@ fun CarritoScreen(
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 colors = CardDefaults.cardColors(
-                    containerColor = MaterialTheme.colorScheme.primaryContainer
+                    containerColor =
+                        MaterialTheme.colorScheme.primaryContainer
                 )
             ) {
                 Row(
@@ -144,6 +160,7 @@ fun CarritoScreen(
                         text = "Total",
                         style = MaterialTheme.typography.titleMedium
                     )
+
                     AnimatedContent(
                         targetState = total,
                         label = "total"
