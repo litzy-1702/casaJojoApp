@@ -76,8 +76,6 @@ fun CarritoScreen(
                     items = carrito,
                     key = { linea -> linea.menuItemId }
                 ) { linea ->
-                    // animateItem: la tarjeta se desvanece y la lista se
-                    // reacomoda con animación al quitar un plato.
                     Card(
                         modifier = Modifier
                             .fillMaxWidth()

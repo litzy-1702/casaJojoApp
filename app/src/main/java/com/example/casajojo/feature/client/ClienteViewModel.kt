@@ -26,43 +26,25 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-/** Estado del formulario de checkout (lo que el cliente escribe). */
 data class CheckoutUiState(
     val nombre: String = "",
     val retiroLoAntesPosible: Boolean = true,
     val horaRetiro: String? = null,
     val restricciones: String = "",
     val errores: CheckoutErrores = CheckoutErrores(),
-    /** true mientras Room guarda el pedido: bloquea un segundo envío. */
     val guardando: Boolean = false,
-    /** Mensaje si Room no pudo guardar el pedido (el carrito se conserva). */
     val errorGuardado: String? = null,
-    /**
-     * Id del pedido recién guardado. La pantalla navega SOLO cuando este
-     * valor deja de ser null, es decir, cuando Room ya confirmó el guardado.
-     */
     val pedidoConfirmadoId: Int? = null
 )
 
-/**
- * ViewModel compartido por las 4 pantallas del cliente (Integrante 2):
- * MenuClienteScreen, CarritoScreen, CheckoutScreen y EstadoPedidoScreen.
- */
 class ClienteViewModel(
     menuRepository: MenuRepository,
     private val pedidoRepository: PedidoRepository
 ) : ViewModel() {
 
-    /** Misma fecha y mismo formato que usa AdminViewModel ("2026-10-26"). */
     val fechaMenu: String = LocalDate.now().toString()
 
-    // ---------- Menú del día (datos del Integrante 1) ----------
-
-    /**
-     * Solo los platos disponibles del día. Vale null mientras Room carga
-     * por primera vez (la pantalla muestra un indicador de carga).
-     */
-    val menuDisponible: StateFlow<List<MenuItem>?> =
+val menuDisponible: StateFlow<List<MenuItem>?> =
         menuRepository.observarMenuDelDia(fechaMenu)
             .map<List<MenuItem>, List<MenuItem>?> { lista ->
                 lista.filter { it.disponible }
@@ -73,9 +55,7 @@ class ClienteViewModel(
                 initialValue = null
             )
 
-    // ---------- Carrito ----------
-
-    private val _carrito = MutableStateFlow<List<DetallePedido>>(emptyList())
+private val _carrito = MutableStateFlow<List<DetallePedido>>(emptyList())
     val carrito: StateFlow<List<DetallePedido>> = _carrito.asStateFlow()
 
     val total: StateFlow<Int> =
@@ -86,9 +66,7 @@ class ClienteViewModel(
         _carrito.map { it.contarPlatos() }
             .stateIn(viewModelScope, SharingStarted.Eagerly, 0)
 
-    // ---------- Mensaje animado al agregar (como en la Guía 12) ----------
-
-    private val _mensaje = MutableStateFlow("")
+private val _mensaje = MutableStateFlow("")
     val mensaje: StateFlow<String> = _mensaje.asStateFlow()
 
     private val _mostrarMensaje = MutableStateFlow(false)
@@ -96,24 +74,16 @@ class ClienteViewModel(
 
     private var trabajoMensaje: Job? = null
 
-    // ---------- Checkout ----------
-
-    private val _checkout = MutableStateFlow(CheckoutUiState())
+private val _checkout = MutableStateFlow(CheckoutUiState())
     val checkout: StateFlow<CheckoutUiState> = _checkout.asStateFlow()
 
-    // ---------- Pedidos guardados en Room ----------
-
-    val historial: StateFlow<List<Pedido>> =
+val historial: StateFlow<List<Pedido>> =
         pedidoRepository.observarPedidos()
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     private val _pedidoSeleccionadoId = MutableStateFlow<Int?>(null)
     val pedidoSeleccionadoId: StateFlow<Int?> = _pedidoSeleccionadoId.asStateFlow()
 
-    /**
-     * El pedido que el cliente está siguiendo. Como viene de un Flow de
-     * Room, cambia solo cuando Caja o Cocina actualizan su estado.
-     */
     val pedidoSeleccionado: StateFlow<Pedido?> =
         combine(
             _pedidoSeleccionadoId,
@@ -122,11 +92,7 @@ class ClienteViewModel(
             pedidos.firstOrNull { it.id == id }
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), null)
 
-    // =========================================================
-    // Acciones del carrito
-    // =========================================================
-
-    fun agregarPlato(plato: MenuItem) {
+fun agregarPlato(plato: MenuItem) {
         _carrito.update { actual ->
             val existe = actual.any { it.menuItemId == plato.id }
             if (existe) {
@@ -163,7 +129,6 @@ class ClienteViewModel(
         limpiarErrorCarrito()
     }
 
-    /** Resta 1; si la cantidad llega a 0, la línea sale del carrito. */
     fun disminuirCantidad(menuItemId: Int) {
         _carrito.update { actual ->
             actual
@@ -186,11 +151,7 @@ class ClienteViewModel(
         limpiarErrorCarrito()
     }
 
-    // =========================================================
-    // Acciones del checkout (cada cambio limpia el error de su campo)
-    // =========================================================
-
-    fun onNombreChange(valor: String) {
+fun onNombreChange(valor: String) {
         _checkout.update {
             it.copy(nombre = valor, errores = it.errores.copy(nombre = null))
         }
@@ -205,7 +166,6 @@ class ClienteViewModel(
         }
     }
 
-    /** La llama el selector nativo de hora (TimePickerDialog). */
     fun onHoraRetiroSeleccionada(hora: Int, minuto: Int) {
         val texto = hora.toString().padStart(2, '0') + ":" +
                 minuto.toString().padStart(2, '0')
@@ -223,17 +183,8 @@ class ClienteViewModel(
         }
     }
 
-    /**
-     * 1. Valida con PedidoValidator. Si hay errores, los deja en el estado
-     *    (la pantalla los muestra por campo) y no guarda nada.
-     * 2. Si todo es válido, guarda el pedido en Room.
-     *    - Éxito: vacía el carrito y deja el id en pedidoConfirmadoId
-     *      (recién ahí la pantalla navega al estado del pedido).
-     *    - Error: muestra errorGuardado y conserva carrito y formulario.
-     */
     fun confirmarPedido() {
         val estado = _checkout.value
-        // Evita un doble envío mientras se guarda.
         if (estado.guardando) return
 
         val carritoActual = _carrito.value
@@ -269,7 +220,6 @@ class ClienteViewModel(
             total = carritoActual.calcularTotal()
         )
 
-        // Se marca ANTES de lanzar la corrutina: un segundo toque ya lo ve.
         _checkout.update {
             it.copy(
                 guardando = true,
@@ -282,15 +232,12 @@ class ClienteViewModel(
             try {
                 val idNuevo = pedidoRepository.registrar(pedido)
 
-                // Room confirmó el guardado.
                 _pedidoSeleccionadoId.value = idNuevo
                 _carrito.value = emptyList()
                 _checkout.value = CheckoutUiState(pedidoConfirmadoId = idNuevo)
             } catch (e: CancellationException) {
-                // Cancelación normal de la corrutina: no es un error de Room.
                 throw e
             } catch (e: Exception) {
-                // Falló Room: se conserva todo para que el cliente reintente.
                 _checkout.update {
                     it.copy(
                         guardando = false,
@@ -302,7 +249,6 @@ class ClienteViewModel(
         }
     }
 
-    /** La pantalla la llama después de navegar, para no navegar dos veces. */
     fun confirmacionAtendida() {
         _checkout.update { it.copy(pedidoConfirmadoId = null) }
     }
@@ -311,11 +257,7 @@ class ClienteViewModel(
         _pedidoSeleccionadoId.value = id
     }
 
-    // =========================================================
-    // Funciones internas
-    // =========================================================
-
-    private fun limpiarErrorCarrito() {
+private fun limpiarErrorCarrito() {
         _checkout.update { it.copy(errores = it.errores.copy(carrito = null)) }
     }
 
@@ -330,10 +272,6 @@ class ClienteViewModel(
     }
 }
 
-/**
- * Factory del ClienteViewModel, con el mismo patrón que
- * AdminViewModelFactory y OperationsViewModelFactory.
- */
 class ClienteViewModelFactory(
     private val menuRepository: MenuRepository,
     private val pedidoRepository: PedidoRepository

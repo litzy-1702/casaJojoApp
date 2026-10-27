@@ -69,8 +69,6 @@ fun EstadoPedidoScreen(
                 when {
                     actual != null -> TarjetaEstadoPedido(pedido = actual)
 
-                    // Hay un pedido elegido pero Room aún no entrega la
-                    // lista actualizada (dura un instante).
                     idSeleccionado != null -> {
                         Card(modifier = Modifier.fillMaxWidth()) {
                             Row(
@@ -136,7 +134,6 @@ fun EstadoPedidoScreen(
 
 @Composable
 private fun TarjetaEstadoPedido(pedido: Pedido) {
-    // Animaciones: el color y la barra cambian suavemente con el estado.
     val colorEstado by animateColorAsState(
         targetValue = colorDeEstado(pedido.estado),
         animationSpec = tween(durationMillis = 500),

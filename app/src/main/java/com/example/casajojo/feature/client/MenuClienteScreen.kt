@@ -54,7 +54,6 @@ import java.util.Locale
 
 private val LOCALE_CHILE: Locale = Locale.forLanguageTag("es-CL")
 
-/** Formatea pesos chilenos: 4600 -> "$4.600". */
 fun formatearPesos(valor: Int): String {
     return "\$" + NumberFormat.getIntegerInstance(LOCALE_CHILE).format(valor)
 }
@@ -87,7 +86,6 @@ fun MenuClienteScreen(
             Text("Ver el estado de mis pedidos")
         }
 
-        // Retroalimentación animada al agregar un plato.
         AnimatedVisibility(
             visible = mostrarMensaje,
             enter = fadeIn() + expandVertically(),
@@ -153,7 +151,6 @@ fun MenuClienteScreen(
                 }
 
                 else -> {
-                    // Agrupados por precio, igual que el menú real del local.
                     val grupos = lista.groupBy { it.precio }.toSortedMap()
 
                     LazyColumn(
@@ -192,7 +189,6 @@ fun MenuClienteScreen(
             }
         }
 
-        // Barra del carrito: aparece deslizándose cuando hay platos.
         AnimatedVisibility(
             visible = carrito.isNotEmpty(),
             enter = slideInVertically { altura -> altura } + fadeIn(),
@@ -309,7 +305,6 @@ private fun TarjetaPlato(
     }
 }
 
-/** Botones − cantidad +. Lo usan el menú y el carrito. */
 @Composable
 internal fun SelectorCantidad(
     cantidad: Int,
@@ -321,7 +316,6 @@ internal fun SelectorCantidad(
             Text(text = "−", style = MaterialTheme.typography.titleLarge)
         }
 
-        // El número cambia con una animación.
         AnimatedContent(
             targetState = cantidad,
             label = "cantidad"
@@ -340,7 +334,6 @@ internal fun SelectorCantidad(
     }
 }
 
-/** Encabezado común de las pantallas del cliente (mismo estilo que Admin). */
 @Composable
 internal fun EncabezadoCliente(
     titulo: String,
@@ -373,7 +366,6 @@ internal fun EncabezadoCliente(
     }
 }
 
-/** "2026-10-26" -> "Lunes 26 de octubre". */
 private fun fechaLegible(fechaIso: String): String {
     return try {
         val formato = DateTimeFormatter.ofPattern("EEEE d 'de' MMMM", LOCALE_CHILE)

@@ -5,10 +5,6 @@ import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import java.time.format.DateTimeParseException
 
-/**
- * Errores del formulario de checkout. Cada campo es null cuando es válido
- * o contiene el mensaje que la pantalla debe mostrar bajo ese campo.
- */
 data class CheckoutErrores(
     val nombre: String? = null,
     val horaRetiro: String? = null,
@@ -24,12 +20,6 @@ data class CheckoutErrores(
         ).isNotEmpty()
 }
 
-/**
- * Validación centralizada del pedido (IE 2.2.1).
- *
- * No depende de Compose ni de Android: recibe datos simples y devuelve
- * los errores. Por eso se puede probar sin abrir la aplicación.
- */
 object PedidoValidator {
 
     const val NOMBRE_MIN = 2
@@ -39,7 +29,6 @@ object PedidoValidator {
     private val FORMATO_HORA: DateTimeFormatter =
         DateTimeFormatter.ofPattern("HH:mm")
 
-    // Letras (incluye tildes y ñ) y espacios.
     private val SOLO_LETRAS = Regex("^[\\p{L} ]+$")
 
     fun validarNombre(nombre: String): String? {
@@ -89,10 +78,6 @@ object PedidoValidator {
         }
     }
 
-    /**
-     * El carrito no puede estar vacío y todos sus platos deben seguir
-     * disponibles en el menú publicado por el administrador.
-     */
     fun validarCarrito(
         carrito: List<DetallePedido>,
         idsDisponibles: Set<Int>
@@ -114,7 +99,6 @@ object PedidoValidator {
         return null
     }
 
-    /** Valida todo el checkout de una sola vez. */
     fun validarCheckout(
         nombre: String,
         retiroLoAntesPosible: Boolean,

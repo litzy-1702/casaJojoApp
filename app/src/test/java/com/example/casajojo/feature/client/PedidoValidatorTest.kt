@@ -12,19 +12,13 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-/**
- * Pruebas unitarias del módulo Cliente (Integrante 2).
- * Se ejecutan sin emulador: clic derecho sobre el archivo → Run.
- */
 class PedidoValidatorTest {
 
     private val pollo = DetallePedido(1, "Pollo Asado", 4800, 2)
     private val tortilla = DetallePedido(2, "Tortilla de Porotos verdes", 4600, 1)
     private val mediodia = LocalTime.of(12, 0)
 
-    // ---------- Carrito (DetallePedido) ----------
-
-    @Test
+@Test
     fun total_sumaLosSubtotales() {
         val carrito = listOf(pollo, tortilla)
         assertEquals(9600, pollo.subtotal)
@@ -38,9 +32,7 @@ class PedidoValidatorTest {
         assertEquals("2x Pollo Asado, 1x Tortilla de Porotos verdes", texto)
     }
 
-    // ---------- Nombre ----------
-
-    @Test
+@Test
     fun nombre_vacio_esError() {
         assertNotNull(PedidoValidator.validarNombre("   "))
     }
@@ -60,9 +52,7 @@ class PedidoValidatorTest {
         assertNotNull(PedidoValidator.validarNombre("a".repeat(41)))
     }
 
-    // ---------- Hora de retiro ----------
-
-    @Test
+@Test
     fun hora_loAntesPosible_noExigeHora() {
         assertNull(PedidoValidator.validarHoraRetiro(true, null, mediodia))
     }
@@ -92,9 +82,7 @@ class PedidoValidatorTest {
         assertNotNull(PedidoValidator.validarHoraRetiro(false, "13h30", mediodia))
     }
 
-    // ---------- Observaciones ----------
-
-    @Test
+@Test
     fun restricciones_vacias_sonValidas() {
         assertNull(PedidoValidator.validarRestricciones(""))
     }
@@ -104,9 +92,7 @@ class PedidoValidatorTest {
         assertNotNull(PedidoValidator.validarRestricciones("x".repeat(151)))
     }
 
-    // ---------- Carrito ----------
-
-    @Test
+@Test
     fun carrito_vacio_esError() {
         assertNotNull(PedidoValidator.validarCarrito(emptyList(), setOf(1, 2)))
     }
@@ -123,9 +109,7 @@ class PedidoValidatorTest {
         assertNull(PedidoValidator.validarCarrito(listOf(pollo, tortilla), setOf(1, 2)))
     }
 
-    // ---------- Checkout completo ----------
-
-    @Test
+@Test
     fun checkout_completoYValido_noTieneErrores() {
         val errores = PedidoValidator.validarCheckout(
             nombre = "Ana Pérez",

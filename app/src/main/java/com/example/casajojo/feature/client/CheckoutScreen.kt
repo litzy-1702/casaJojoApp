@@ -53,7 +53,6 @@ fun CheckoutScreen(
     val context = LocalContext.current
     val errores = estado.errores
 
-    // Navega SOLO cuando Room ya guardó el pedido (el ViewModel deja el id).
     LaunchedEffect(estado.pedidoConfirmadoId) {
         if (estado.pedidoConfirmadoId != null) {
             viewModel.confirmacionAtendida()
@@ -61,7 +60,6 @@ fun CheckoutScreen(
         }
     }
 
-    // Recurso nativo: selector de hora del sistema Android.
     fun abrirSelectorHora() {
         val inicial = estado.horaRetiro
             ?.let { runCatching { LocalTime.parse(it) }.getOrNull() }
@@ -88,7 +86,6 @@ fun CheckoutScreen(
             subtitulo = "Completa tus datos para enviar la comanda al local."
         )
 
-        // ---------- Resumen ----------
         Card(modifier = Modifier.fillMaxWidth()) {
             Column(
                 modifier = Modifier.padding(16.dp),
@@ -124,7 +121,6 @@ fun CheckoutScreen(
             MensajeError(texto = errores.carrito.orEmpty())
         }
 
-        // ---------- Nombre ----------
         OutlinedTextField(
             value = estado.nombre,
             onValueChange = viewModel::onNombreChange,
@@ -158,7 +154,6 @@ fun CheckoutScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // ---------- Hora de retiro ----------
         Text(
             text = "Hora de retiro",
             style = MaterialTheme.typography.titleMedium
@@ -198,7 +193,6 @@ fun CheckoutScreen(
             }
         }
 
-        // ---------- Observaciones / restricciones ----------
         OutlinedTextField(
             value = estado.restricciones,
             onValueChange = viewModel::onRestriccionesChange,
@@ -238,15 +232,10 @@ fun CheckoutScreen(
             modifier = Modifier.fillMaxWidth()
         )
 
-        // ---------- Error al guardar en Room ----------
         AnimatedVisibility(visible = estado.errorGuardado != null) {
             MensajeError(texto = estado.errorGuardado.orEmpty())
         }
 
-        // ---------- Confirmar ----------
-        // Solo se deshabilita mientras se guarda (evita el doble envío).
-        // Con el carrito vacío sigue activo para que PedidoValidator
-        // muestre su mensaje.
         Button(
             onClick = { viewModel.confirmarPedido() },
             enabled = !estado.guardando,
