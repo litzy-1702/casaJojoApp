@@ -1,3 +1,4 @@
+
 package com.example.casajojo.feature.admin
 
 import androidx.compose.animation.animateContentSize
@@ -51,11 +52,11 @@ fun AdminScreen(
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        // Encabezado de administración
         Card(
             modifier = Modifier.fillMaxWidth(),
             colors = CardDefaults.cardColors(
-                containerColor = MaterialTheme.colorScheme.primaryContainer
+                containerColor =
+                    MaterialTheme.colorScheme.primaryContainer
             )
         ) {
             Column(
@@ -80,8 +81,6 @@ fun AdminScreen(
             }
         }
 
-
-        // Acceso al formulario para agregar platos
         Button(
             onClick = {
                 viewModel.nuevoPlato()
@@ -92,7 +91,19 @@ fun AdminScreen(
             Text("Agregar plato")
         }
 
-        // Acceso a la gestión de usuarios
+        Text(
+            text = "Puedes cargar los seis platos base de Casa Jojo. " +
+                    "Solo se agregarán los que falten para hoy.",
+            style = MaterialTheme.typography.bodySmall
+        )
+
+        Button(
+            onClick = viewModel::cargarMenuBase,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            Text("Cargar menú base de Casa Jojo")
+        }
+
         Button(
             onClick = onGestionUsuariosClick,
             modifier = Modifier.fillMaxWidth()
@@ -100,8 +111,6 @@ fun AdminScreen(
             Text("Gestionar usuarios")
         }
 
-
-        // Mensajes del ViewModel
         mensaje?.let { texto ->
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -129,7 +138,6 @@ fun AdminScreen(
             }
         }
 
-        // Resumen de productos
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
@@ -155,7 +163,6 @@ fun AdminScreen(
             }
         }
 
-        // Lista agrupada por precio
         LazyColumn(
             modifier = Modifier
                 .weight(1f)
@@ -172,8 +179,10 @@ fun AdminScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(24.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                            horizontalAlignment =
+                                Alignment.CenterHorizontally,
+                            verticalArrangement =
+                                Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
                                 text = "Todavía no hay platos",
@@ -181,15 +190,16 @@ fun AdminScreen(
                             )
 
                             Text(
-                                text = "Agrega un plato para comenzar " +
-                                        "a organizar el menú.",
+                                text = "Pulsa «Cargar menú base de Casa Jojo» " +
+                                        "para registrar los seis platos iniciales.",
                                 style = MaterialTheme.typography.bodyMedium
                             )
                         }
                     }
                 }
             } else {
-                val grupos = menu.groupBy { it.precio }.toSortedMap()
+                val grupos =
+                    menu.groupBy { it.precio }.toSortedMap()
 
                 grupos.forEach { (precio, platos) ->
                     item(key = "precio-$precio") {
@@ -261,7 +271,8 @@ fun AdminScreen(
                                             horizontal = 10.dp,
                                             vertical = 5.dp
                                         ),
-                                        style = MaterialTheme.typography.labelMedium
+                                        style =
+                                            MaterialTheme.typography.labelMedium
                                     )
                                 }
 
@@ -302,7 +313,8 @@ fun AdminScreen(
                                 ) {
                                     Text(
                                         text = "Eliminar plato",
-                                        color = MaterialTheme.colorScheme.error
+                                        color =
+                                            MaterialTheme.colorScheme.error
                                     )
                                 }
                             }
@@ -313,7 +325,6 @@ fun AdminScreen(
         }
     }
 
-    // Confirmación antes de eliminar
     platoAEliminar?.let { plato ->
         AlertDialog(
             onDismissRequest = {
@@ -355,5 +366,6 @@ private fun formatearPrecio(precio: Int): String {
     val formato = NumberFormat.getIntegerInstance(
         Locale("es", "CL")
     )
+
     return "\$" + formato.format(precio)
 }
