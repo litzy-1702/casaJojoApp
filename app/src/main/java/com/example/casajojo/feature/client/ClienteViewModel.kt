@@ -135,24 +135,14 @@ class ClienteViewModel(
     ) {
         val agregadosUnicos = acompanamientos.distinct()
 
-        val seleccionValida =
-            agregadosUnicos.size in
-                    MenuCasaJojo.MIN_AGREGADOS..
-                    MenuCasaJojo.MAX_AGREGADOS &&
-                    agregadosUnicos.all {
-                        it in MenuCasaJojo.AGREGADOS
-                    }
+        val errorAgregados = AgregadosValidator.validar(acompanamientos)
 
-        if (!seleccionValida) {
-            mostrarMensajeTemporal(
-                "Selecciona uno o dos acompañamientos válidos."
-            )
+        if (errorAgregados != null) {
+            mostrarMensajeTemporal(errorAgregados)
             return
         }
 
-        // Ordenar evita duplicar una combinación cuando los agregados
-        // se seleccionan en un orden diferente.
-        val agregadosOrdenados = agregadosUnicos.sorted()
+        val agregadosOrdenados = acompanamientos.sorted()
 
         _carrito.update { actual ->
 
