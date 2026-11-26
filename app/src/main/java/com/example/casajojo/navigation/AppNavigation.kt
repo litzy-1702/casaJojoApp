@@ -265,17 +265,7 @@ fun AppNavigation(
         }
     }
 
-    // Evitar volver a pantallas internas mediante Atrás
-    // mientras exista una sesión interna activa.
-    BackHandler(
-        enabled = authState.usuarioActual != null &&
-                (
-                        currentRoute in rutasInternas ||
-                                currentRoute == Screen.CambiarPassword.route
-                        )
-    ) {
-        // El usuario debe cerrar sesión mediante el botón disponible.
-    }
+
 
     Scaffold(
         topBar = {
@@ -573,6 +563,20 @@ fun AppNavigation(
                     viewModel = operationsViewModel
                 )
             }
+        }
+
+        // Evitar volver a pantallas internas mediante Atrás
+        // mientras exista una sesión interna activa.
+        // Se declara después del NavHost para que tenga prioridad
+        // sobre el manejo de Atrás del propio NavHost (DEF-01).
+        BackHandler(
+            enabled = authState.usuarioActual != null &&
+                    (
+                            currentRoute in rutasInternas ||
+                                    currentRoute == Screen.CambiarPassword.route
+                            )
+        ) {
+            // El usuario debe cerrar sesión mediante el botón disponible.
         }
     }
 }
