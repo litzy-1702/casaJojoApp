@@ -96,13 +96,19 @@ class ClienteViewModel(
     val checkout: StateFlow<CheckoutUiState> =
         _checkout.asStateFlow()
 
+    private val _clienteTelefono = MutableStateFlow("")
+
     val historial: StateFlow<List<Pedido>> =
-        pedidoRepository.observarPedidos()
-            .stateIn(
-                scope = viewModelScope,
-                started = SharingStarted.WhileSubscribed(5000),
-                initialValue = emptyList()
-            )
+        combine(
+            pedidoRepository.observarPedidos(),
+            _clienteTelefono
+        ) { pedidos, telefono ->
+            pedidos.filter { it.perteneceA(telefono) }
+        }.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
 
     private val _pedidoSeleccionadoId =
         MutableStateFlow<Int?>(null)
@@ -113,9 +119,10 @@ class ClienteViewModel(
     val pedidoSeleccionado: StateFlow<Pedido?> =
         combine(
             _pedidoSeleccionadoId,
-            pedidoRepository.observarPedidos()
-        ) { id, pedidos ->
-            pedidos.firstOrNull { it.id == id }
+            pedidoRepository.observarPedidos(),
+            _clienteTelefono
+        ) { id, pedidos, telefono ->
+            pedidos.firstOrNull { it.id == id && it.perteneceA(telefono) }
         }.stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5000),
@@ -343,7 +350,18 @@ class ClienteViewModel(
 
         limpiarErrorCarrito()
     }
-
+    fun iniciarCliente(nombre: String, telefono: String) {
+        _clienteTelefono.value = telefono.filter { it.isDigit() }
+        _pedidoSeleccionadoId.value = null
+        _carrito.value = emptyList()
+        _checkout.value = CheckoutUiState(nombre = nombre)
+    }
+    fun cerrarCliente() {
+        _clienteTelefono.value = ""
+        _pedidoSeleccionadoId.value = null
+        _carrito.value = emptyList()
+        _checkout.value = CheckoutUiState()
+    }
     fun onNombreChange(valor: String) {
         _checkout.update {
             it.copy(
@@ -434,6 +452,7 @@ class ClienteViewModel(
 
         val pedido = Pedido(
             clienteNombre = estado.nombre.trim(),
+            clienteTelefono = _clienteTelefono.value,
             detalleItems = carritoActual.aTextoDetalle(),
             restricciones = estado.restricciones.trim(),
             horaComprometida =
@@ -492,6 +511,8 @@ class ClienteViewModel(
         _pedidoSeleccionadoId.value = id
     }
 
+    private fun Pedido.perteneceA(telefono: String): Boolean =
+        telefono.isNotBlank() && clienteTelefono == telefono
     private fun limpiarErrorCarrito() {
         _checkout.update {
             it.copy(

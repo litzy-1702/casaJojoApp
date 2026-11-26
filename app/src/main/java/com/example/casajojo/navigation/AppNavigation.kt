@@ -135,11 +135,7 @@ fun AppNavigation(
         clienteNombre = ""
         clienteTelefono = ""
 
-        clienteViewModel.onNombreChange("")
-
-        clienteViewModel.carrito.value.forEach { detalle ->
-            clienteViewModel.quitarPlato(detalle.menuItemId)
-        }
+        clienteViewModel.cerrarCliente()
 
         authViewModel.cerrarSesion()
 
@@ -396,7 +392,7 @@ fun AppNavigation(
                         clienteNombre = nombre
                         clienteTelefono = telefono
 
-                        clienteViewModel.onNombreChange(nombre)
+                        clienteViewModel.iniciarCliente(nombre, telefono)
 
                         navController.navigate(
                             Screen.ClienteMenu.route
