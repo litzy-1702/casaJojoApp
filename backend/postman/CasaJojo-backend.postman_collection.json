@@ -1,0 +1,378 @@
+{
+  "info": {
+    "name": "CasaJojo Backend",
+    "description": "Pruebas de los microservicios de CasaJojo (EP4 DSY1105). menu-service en el puerto 8081.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "menu-service",
+      "item": [
+        {
+          "name": "1. Crear plato (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{menuUrl}}/api/menu",
+              "host": [
+                "{{menuUrl}}"
+              ],
+              "path": [
+                "api",
+                "menu"
+              ]
+            },
+            "description": "Crea un plato. Guarda su id en la variable platoId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Pollo asado\",\n  \"descripcion\": \"Incluye mix de ensaladas. Selecciona uno o dos agregados.\",\n  \"precio\": 4800,\n  \"disponible\": true,\n  \"imagenUri\": null,\n  \"fechaMenu\": \"2026-11-27\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", function () { pm.response.to.have.status(201); });",
+                  "var j = pm.response.json();",
+                  "pm.test(\"Devuelve id\", function () { pm.expect(j.id).to.be.a(\"number\"); });",
+                  "pm.collectionVariables.set(\"platoId\", j.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Crear plato para eliminar (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{menuUrl}}/api/menu",
+              "host": [
+                "{{menuUrl}}"
+              ],
+              "path": [
+                "api",
+                "menu"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Plato temporal\",\n  \"descripcion\": \"Plato de prueba para eliminar\",\n  \"precio\": 3000,\n  \"disponible\": true,\n  \"imagenUri\": null,\n  \"fechaMenu\": \"2026-11-27\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set(\"platoEliminarId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Listar menú del día (GET)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{menuUrl}}/api/menu?fecha=2026-11-27",
+              "host": [
+                "{{menuUrl}}"
+              ],
+              "path": [
+                "api",
+                "menu"
+              ],
+              "query": [
+                {
+                  "key": "fecha",
+                  "value": "2026-11-27"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Devuelve una lista\", function () { pm.expect(pm.response.json()).to.be.an(\"array\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Obtener plato por id (GET)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{menuUrl}}/api/menu/{{platoId}}",
+              "host": [
+                "{{menuUrl}}"
+              ],
+              "path": [
+                "api",
+                "menu",
+                "{{platoId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", function () { pm.response.to.have.status(200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Editar plato (PUT)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{menuUrl}}/api/menu/{{platoId}}",
+              "host": [
+                "{{menuUrl}}"
+              ],
+              "path": [
+                "api",
+                "menu",
+                "{{platoId}}"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"Pollo asado\",\n  \"descripcion\": \"Incluye mix de ensaladas. Selecciona uno o dos agregados.\",\n  \"precio\": 5200,\n  \"disponible\": true,\n  \"imagenUri\": null,\n  \"fechaMenu\": \"2026-11-27\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Precio actualizado\", function () { pm.expect(pm.response.json().precio).to.eql(5200); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Agotar plato (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{menuUrl}}/api/menu/{{platoId}}/disponibilidad",
+              "host": [
+                "{{menuUrl}}"
+              ],
+              "path": [
+                "api",
+                "menu",
+                "{{platoId}}",
+                "disponibilidad"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"disponible\": false\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Quedó agotado\", function () { pm.expect(pm.response.json().disponible).to.eql(false); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Eliminar plato (DELETE)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{menuUrl}}/api/menu/{{platoEliminarId}}",
+              "host": [
+                "{{menuUrl}}"
+              ],
+              "path": [
+                "api",
+                "menu",
+                "{{platoEliminarId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 204\", function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Plato eliminado no existe (GET → 404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{menuUrl}}/api/menu/{{platoEliminarId}}",
+              "host": [
+                "{{menuUrl}}"
+              ],
+              "path": [
+                "api",
+                "menu",
+                "{{platoEliminarId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 404\", function () { pm.response.to.have.status(404); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "9. Crear plato inválido (POST → 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{menuUrl}}/api/menu",
+              "host": [
+                "{{menuUrl}}"
+              ],
+              "path": [
+                "api",
+                "menu"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"nombre\": \"\",\n  \"descripcion\": \"\",\n  \"precio\": 0,\n  \"fechaMenu\": \"27-11-2026\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 400\", function () { pm.response.to.have.status(400); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "variable": [
+    {
+      "key": "menuUrl",
+      "value": "http://localhost:8081"
+    },
+    {
+      "key": "platoId",
+      "value": ""
+    },
+    {
+      "key": "platoEliminarId",
+      "value": ""
+    }
+  ]
+}
