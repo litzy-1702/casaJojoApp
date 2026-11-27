@@ -1,7 +1,7 @@
 {
   "info": {
     "name": "CasaJojo Backend",
-    "description": "Pruebas de los microservicios de CasaJojo (EP4 DSY1105). menu-service en el puerto 8081.",
+    "description": "Pruebas de los microservicios de CasaJojo (EP4 DSY1105). menu-service en el puerto 8081 y pedido-service en el puerto 8082.",
     "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
   },
   "item": [
@@ -31,7 +31,7 @@
             "description": "Crea un plato. Guarda su id en la variable platoId.",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nombre\": \"Pollo asado\",\n  \"descripcion\": \"Incluye mix de ensaladas. Selecciona uno o dos agregados.\",\n  \"precio\": 4800,\n  \"disponible\": true,\n  \"imagenUri\": null,\n  \"fechaMenu\": \"2026-11-27\"\n}",
+              "raw": "{\n  \"nombre\": \"Plato de prueba Postman\",\n  \"descripcion\": \"Incluye mix de ensaladas. Selecciona uno o dos agregados.\",\n  \"precio\": 4800,\n  \"disponible\": true,\n  \"imagenUri\": null,\n  \"fechaMenu\": \"{{hoy}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -77,7 +77,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nombre\": \"Plato temporal\",\n  \"descripcion\": \"Plato de prueba para eliminar\",\n  \"precio\": 3000,\n  \"disponible\": true,\n  \"imagenUri\": null,\n  \"fechaMenu\": \"2026-11-27\"\n}",
+              "raw": "{\n  \"nombre\": \"Plato temporal\",\n  \"descripcion\": \"Plato de prueba para eliminar\",\n  \"precio\": 3000,\n  \"disponible\": true,\n  \"imagenUri\": null,\n  \"fechaMenu\": \"{{hoy}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -104,7 +104,7 @@
             "method": "GET",
             "header": [],
             "url": {
-              "raw": "{{menuUrl}}/api/menu?fecha=2026-11-27",
+              "raw": "{{menuUrl}}/api/menu?fecha={{hoy}}",
               "host": [
                 "{{menuUrl}}"
               ],
@@ -115,7 +115,7 @@
               "query": [
                 {
                   "key": "fecha",
-                  "value": "2026-11-27"
+                  "value": "{{hoy}}"
                 }
               ]
             },
@@ -188,7 +188,7 @@
             "description": "",
             "body": {
               "mode": "raw",
-              "raw": "{\n  \"nombre\": \"Pollo asado\",\n  \"descripcion\": \"Incluye mix de ensaladas. Selecciona uno o dos agregados.\",\n  \"precio\": 5200,\n  \"disponible\": true,\n  \"imagenUri\": null,\n  \"fechaMenu\": \"2026-11-27\"\n}",
+              "raw": "{\n  \"nombre\": \"Plato de prueba Postman\",\n  \"descripcion\": \"Incluye mix de ensaladas. Selecciona uno o dos agregados.\",\n  \"precio\": 5200,\n  \"disponible\": true,\n  \"imagenUri\": null,\n  \"fechaMenu\": \"{{hoy}}\"\n}",
               "options": {
                 "raw": {
                   "language": "json"
@@ -309,7 +309,8 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
-                  "pm.test(\"Responde 404\", function () { pm.response.to.have.status(404); });"
+                  "pm.test(\"Responde 404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"Mensaje en español\", function () { pm.expect(pm.response.json().mensaje).to.include(\"No existe el plato\"); });"
                 ]
               }
             }
@@ -352,6 +353,485 @@
               "script": {
                 "type": "text/javascript",
                 "exec": [
+                  "pm.test(\"Responde 400\", function () { pm.response.to.have.status(400); });",
+                  "var j = pm.response.json();",
+                  "pm.test(\"Indica los campos con error\", function () { pm.expect(j.errores).to.have.property(\"nombre\"); pm.expect(j.errores).to.have.property(\"precio\"); pm.expect(j.errores).to.have.property(\"fechaMenu\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10. Platos base cargados hoy (GET)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{menuUrl}}/api/menu?fecha={{hoy}}",
+              "host": [
+                "{{menuUrl}}"
+              ],
+              "path": [
+                "api",
+                "menu"
+              ],
+              "query": [
+                {
+                  "key": "fecha",
+                  "value": "{{hoy}}"
+                }
+              ]
+            },
+            "description": "Comprueba que al iniciar se cargaron los 6 platos base para la fecha de hoy."
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", function () { pm.response.to.have.status(200); });",
+                  "var nombres = pm.response.json().map(function (p) { return p.nombre; });",
+                  "var base = [\"Guatitas a la jardinera\", \"Cerdo mongoliano\", \"Filete de pollo\", \"Tortilla de porotos verdes\", \"Pollo asado\", \"Carne al jugo\"];",
+                  "pm.test(\"Incluye los 6 platos base\", function () { base.forEach(function (n) { pm.expect(nombres).to.include(n); }); });"
+                ]
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "pedido-service",
+      "item": [
+        {
+          "name": "1. Crear pedido (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{pedidoUrl}}/api/pedidos",
+              "host": [
+                "{{pedidoUrl}}"
+              ],
+              "path": [
+                "api",
+                "pedidos"
+              ]
+            },
+            "description": "Crea un pedido. Guarda su id en la variable pedidoId.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clienteNombre\": \"María González\",\n  \"clienteTelefono\": \"912345678\",\n  \"detalleItems\": \"1x Pollo asado | Agregados: Arroz normal, Puré natural | Ensalada incluida: Mix de ensaladas\",\n  \"restricciones\": \"Sin sal\",\n  \"horaComprometida\": \"13:30\",\n  \"total\": 4800,\n  \"metodoPago\": \"Efectivo\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", function () { pm.response.to.have.status(201); });",
+                  "var j = pm.response.json();",
+                  "pm.test(\"Devuelve id\", function () { pm.expect(j.id).to.be.a(\"number\"); });",
+                  "pm.test(\"Estado inicial RECIBIDO y pago pendiente\", function () { pm.expect(j.estado).to.eql(\"RECIBIDO\"); pm.expect(j.pagado).to.eql(false); });",
+                  "pm.collectionVariables.set(\"pedidoId\", j.id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "2. Crear pedido para eliminar (POST)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{pedidoUrl}}/api/pedidos",
+              "host": [
+                "{{pedidoUrl}}"
+              ],
+              "path": [
+                "api",
+                "pedidos"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clienteNombre\": \"Pedido temporal\",\n  \"clienteTelefono\": \"\",\n  \"detalleItems\": \"1x Carne al jugo | Agregados: Papas fritas\",\n  \"restricciones\": \"\",\n  \"horaComprometida\": \"Lo antes posible\",\n  \"total\": 4800\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 201\", function () { pm.response.to.have.status(201); });",
+                  "pm.collectionVariables.set(\"pedidoEliminarId\", pm.response.json().id);"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "3. Listar pedidos (GET)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{pedidoUrl}}/api/pedidos",
+              "host": [
+                "{{pedidoUrl}}"
+              ],
+              "path": [
+                "api",
+                "pedidos"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", function () { pm.response.to.have.status(200); });",
+                  "var lista = pm.response.json();",
+                  "pm.test(\"Devuelve una lista\", function () { pm.expect(lista).to.be.an(\"array\"); });",
+                  "pm.test(\"Contiene el pedido creado\", function () { var ids = lista.map(function (p) { return p.id; }); pm.expect(ids).to.include(Number(pm.collectionVariables.get(\"pedidoId\"))); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "4. Obtener pedido por id (GET)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{pedidoUrl}}/api/pedidos/{{pedidoId}}",
+              "host": [
+                "{{pedidoUrl}}"
+              ],
+              "path": [
+                "api",
+                "pedidos",
+                "{{pedidoId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Datos del cliente\", function () { var j = pm.response.json(); pm.expect(j.clienteNombre).to.eql(\"María González\"); pm.expect(j.clienteTelefono).to.eql(\"912345678\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "5. Cambiar estado a EN_PREPARACION (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{pedidoUrl}}/api/pedidos/{{pedidoId}}/estado",
+              "host": [
+                "{{pedidoUrl}}"
+              ],
+              "path": [
+                "api",
+                "pedidos",
+                "{{pedidoId}}",
+                "estado"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"EN_PREPARACION\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Estado actualizado\", function () { pm.expect(pm.response.json().estado).to.eql(\"EN_PREPARACION\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "6. Listar por estado (GET)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{pedidoUrl}}/api/pedidos?estado=EN_PREPARACION",
+              "host": [
+                "{{pedidoUrl}}"
+              ],
+              "path": [
+                "api",
+                "pedidos"
+              ],
+              "query": [
+                {
+                  "key": "estado",
+                  "value": "EN_PREPARACION"
+                }
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", function () { pm.response.to.have.status(200); });",
+                  "var lista = pm.response.json();",
+                  "pm.test(\"Todos están EN_PREPARACION\", function () { pm.expect(lista.length).to.be.above(0); lista.forEach(function (p) { pm.expect(p.estado).to.eql(\"EN_PREPARACION\"); }); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "7. Marcar como pagado (PATCH)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{pedidoUrl}}/api/pedidos/{{pedidoId}}/pago",
+              "host": [
+                "{{pedidoUrl}}"
+              ],
+              "path": [
+                "api",
+                "pedidos",
+                "{{pedidoId}}",
+                "pago"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"pagado\": true\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 200\", function () { pm.response.to.have.status(200); });",
+                  "pm.test(\"Pedido pagado\", function () { pm.expect(pm.response.json().pagado).to.eql(true); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "8. Eliminar pedido (DELETE)",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{pedidoUrl}}/api/pedidos/{{pedidoEliminarId}}",
+              "host": [
+                "{{pedidoUrl}}"
+              ],
+              "path": [
+                "api",
+                "pedidos",
+                "{{pedidoEliminarId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 204\", function () { pm.response.to.have.status(204); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "9. Pedido eliminado no existe (GET → 404)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{pedidoUrl}}/api/pedidos/{{pedidoEliminarId}}",
+              "host": [
+                "{{pedidoUrl}}"
+              ],
+              "path": [
+                "api",
+                "pedidos",
+                "{{pedidoEliminarId}}"
+              ]
+            },
+            "description": ""
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 404\", function () { pm.response.to.have.status(404); });",
+                  "pm.test(\"Mensaje en español\", function () { pm.expect(pm.response.json().mensaje).to.include(\"No existe el pedido\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "10. Crear pedido inválido (POST → 400)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{pedidoUrl}}/api/pedidos",
+              "host": [
+                "{{pedidoUrl}}"
+              ],
+              "path": [
+                "api",
+                "pedidos"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"clienteNombre\": \"\",\n  \"clienteTelefono\": \"abc\",\n  \"detalleItems\": \"\",\n  \"horaComprometida\": \"13:30\",\n  \"total\": 0\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "pm.test(\"Responde 400\", function () { pm.response.to.have.status(400); });",
+                  "var j = pm.response.json();",
+                  "pm.test(\"Indica los campos con error\", function () { pm.expect(j.errores).to.have.property(\"clienteNombre\"); pm.expect(j.errores).to.have.property(\"detalleItems\"); pm.expect(j.errores).to.have.property(\"total\"); });"
+                ]
+              }
+            }
+          ]
+        },
+        {
+          "name": "11. Estado inexistente (PATCH → 400)",
+          "request": {
+            "method": "PATCH",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{pedidoUrl}}/api/pedidos/{{pedidoId}}/estado",
+              "host": [
+                "{{pedidoUrl}}"
+              ],
+              "path": [
+                "api",
+                "pedidos",
+                "{{pedidoId}}",
+                "estado"
+              ]
+            },
+            "description": "",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"estado\": \"PERDIDO\"\n}",
+              "options": {
+                "raw": {
+                  "language": "json"
+                }
+              }
+            }
+          },
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
                   "pm.test(\"Responde 400\", function () { pm.response.to.have.status(400); });"
                 ]
               }
@@ -367,12 +847,42 @@
       "value": "http://localhost:8081"
     },
     {
+      "key": "pedidoUrl",
+      "value": "http://localhost:8082"
+    },
+    {
+      "key": "hoy",
+      "value": ""
+    },
+    {
       "key": "platoId",
       "value": ""
     },
     {
       "key": "platoEliminarId",
       "value": ""
+    },
+    {
+      "key": "pedidoId",
+      "value": ""
+    },
+    {
+      "key": "pedidoEliminarId",
+      "value": ""
+    }
+  ],
+  "event": [
+    {
+      "listen": "prerequest",
+      "script": {
+        "type": "text/javascript",
+        "exec": [
+          "// Fecha de hoy (AAAA-MM-DD) para las peticiones del menú",
+          "var d = new Date();",
+          "var hoy = d.getFullYear() + \"-\" + String(d.getMonth() + 1).padStart(2, \"0\") + \"-\" + String(d.getDate()).padStart(2, \"0\");",
+          "pm.collectionVariables.set(\"hoy\", hoy);"
+        ]
+      }
     }
   ]
 }
