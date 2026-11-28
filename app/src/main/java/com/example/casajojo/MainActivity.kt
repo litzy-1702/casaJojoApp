@@ -12,6 +12,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.ViewModelProvider
 import com.example.casajojo.core.notifications.OrderNotificationManager
 import com.example.casajojo.data.local.AppDatabase
+import com.example.casajojo.data.network.RetrofitClient
 import com.example.casajojo.data.repository.MenuRepository
 import com.example.casajojo.data.repository.PedidoRepository
 import com.example.casajojo.feature.admin.AdminViewModel
@@ -56,8 +57,8 @@ class MainActivity : ComponentActivity() {
         val notificationManager =
             OrderNotificationManager(applicationContext)
 
-        val menuRepository = MenuRepository(database.menuDao())
-        val pedidoRepository = PedidoRepository(database.pedidoDao())
+        val menuRepository = MenuRepository(database.menuDao(), RetrofitClient.menuApi)
+        val pedidoRepository = PedidoRepository(database.pedidoDao(), RetrofitClient.pedidoApi)
 
         // Autenticación y usuarios internos
         val authRepository = AuthRepository(database.usuarioDao())
@@ -83,7 +84,7 @@ class MainActivity : ComponentActivity() {
         val operationsViewModel = ViewModelProvider(
             this,
             OperationsViewModelFactory(
-                database.pedidoDao(),
+                pedidoRepository,
                 notificationManager
             )
         )[OperationsViewModel::class.java]

@@ -4,8 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.casajojo.core.notifications.OrderNotificationManager
-import com.example.casajojo.data.local.PedidoDao
 import com.example.casajojo.data.model.Pedido
+import com.example.casajojo.data.repository.PedidoRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
@@ -16,31 +16,42 @@ import java.util.Date
 import java.util.Locale
 
 class OperationsViewModel(
-    private val pedidoDao: PedidoDao,
+    private val pedidoRepository: PedidoRepository,
     private val notificationManager: OrderNotificationManager
 ) : ViewModel() {
 
-    val pedidos: StateFlow<List<Pedido>> = pedidoDao.observarTodos().stateIn(
+    val pedidos: StateFlow<List<Pedido>> = pedidoRepository.observarPedidos().stateIn(
         scope = viewModelScope,
         started = SharingStarted.WhileSubscribed(5000),
         initialValue = emptyList()
     )
 
+    init {
+        viewModelScope.launch {
+            pedidoRepository.sincronizarPedidos()
+        }
+    }
+
+    fun refrescarPedidos() {
+        viewModelScope.launch {
+            pedidoRepository.sincronizarPedidos()
+        }
+    }
+
     fun cambiarEstadoPedido(pedido: Pedido, nuevoEstado: EstadoPedido) {
         viewModelScope.launch {
-            pedidoDao.actualizarEstado(pedido.id, nuevoEstado)
+            pedidoRepository.actualizarEstado(pedido.id, nuevoEstado)
             notificationManager.notificarCambioEstado(pedido.id, pedido.clienteNombre, nuevoEstado)
         }
     }
 
     fun cambiarEstadoPago(pedidoId: Int, pagado: Boolean) {
         viewModelScope.launch {
-            pedidoDao.actualizarPago(pedidoId, pagado)
+            pedidoRepository.actualizarPago(pedidoId, pagado)
         }
     }
 
-
-    //la dema para simular
+    // la demo para simular
     fun crearPedidoDemo() {
         viewModelScope.launch {
             val horaActual = Calendar.getInstance()
@@ -58,12 +69,11 @@ class OperationsViewModel(
                 estado = EstadoPedido.RECIBIDO,
                 pagado = false
             )
-            pedidoDao.insertar(demo)
+            pedidoRepository.registrar(demo)
         }
     }
 
-
-    //calcula si el pedido esta atrasado comparando la hora actual con la hora solicitada
+    // calcula si el pedido esta atrasado comparando la hora actual con la hora solicitada
     fun estaAtrasado(pedido: Pedido): Boolean {
         if (pedido.estado == EstadoPedido.ENTREGADO || pedido.estado == EstadoPedido.CANCELADO) return false
 
@@ -95,13 +105,13 @@ class OperationsViewModel(
 }
 
 class OperationsViewModelFactory(
-    private val pedidoDao: PedidoDao,
+    private val pedidoRepository: PedidoRepository,
     private val notificationManager: OrderNotificationManager
 ) : ViewModelProvider.Factory {
     override fun <T : ViewModel> create(modelClass: Class<T>): T {
         if (modelClass.isAssignableFrom(OperationsViewModel::class.java)) {
             @Suppress("UNCHECKED_CAST")
-            return OperationsViewModel(pedidoDao, notificationManager) as T
+            return OperationsViewModel(pedidoRepository, notificationManager) as T
         }
         throw IllegalArgumentException("ViewModel desconocido")
     }
